@@ -1,6 +1,11 @@
+from db_slices import listar_slices
+
 
 def opcion_1():
-    print("opcion1 ")
+    print("=== LISTAR SLICES ===")
+    slices = listar_slices()
+    for s in slices:
+        print(f"ID: {s[0]} | Nombre: {s[1]} | Estado: {s[2]}")
 
 def opcion_2():
     print("opcion2 ")
@@ -48,8 +53,9 @@ def main():
             
 
             
-        except:
+        except ValueError:
             print("ERROR - Ingresa un número ")
+            continue
         
 
 if __name__ == "__main__":
