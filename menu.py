@@ -13,7 +13,11 @@ las funciones reales. Por ahora, TODO imprime "aún no implementado".
 from __future__ import annotations
 import os
 import sys
+import subprocess
+import platform
 from typing import Optional, List, Dict
+from graphviz import Graph
+import json
 
 # ---------------------- Utilidades básicas ----------------------
 def clear_screen() -> None:
@@ -116,6 +120,121 @@ def ascii_block(title: str, art_lines: List[str]) -> str:
         body.append("│ " + l.ljust(width - 3) + "│")
     return "\n".join([top] + body + [bottom])
 
+def graphviz_preview_for(template: str, g: Graph, base: str = "") -> dict:
+    """Añade un subgrafo a g según la plantilla seleccionada y devuelve todos los nodos."""
+    prefix = base + template[:3]  # prefijo corto para nodos
+    nodes = {}
+    
+    if template == "Punto a Punto":
+        g.node(prefix+"A", "A")
+        g.node(prefix+"B", "B")
+        g.edge(prefix+"A", prefix+"B")
+        nodes = {"A": prefix+"A", "B": prefix+"B"}
+    
+    elif template == "Estrella":
+        g.node(prefix+"C", "C")
+        nodes = {"C": prefix+"C"}
+        for node in ["A", "B", "D", "E"]:
+            g.node(prefix+node, node)
+            g.edge(prefix+"C", prefix+node)
+            nodes[node] = prefix+node
+    
+    elif template == "Anillo":
+        node_list = [prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
+        for node in node_list:
+            g.node(node, node[-1])
+            nodes[node[-1]] = node
+        for i in range(len(node_list)):
+            g.edge(node_list[i], node_list[(i+1) % len(node_list)])
+    
+    elif template == "Árbol":
+        g.node(prefix+"R", "R")
+        nodes = {"R": prefix+"R"}
+        for node in ["A", "B", "C", "D"]:
+            g.node(prefix+node, node)
+            nodes[node] = prefix+node
+        g.edge(prefix+"R", prefix+"A")
+        g.edge(prefix+"R", prefix+"B")
+        g.edge(prefix+"B", prefix+"C")
+        g.edge(prefix+"B", prefix+"D")
+    
+    elif template == "Bus":
+        bus_nodes = [prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
+        for n in bus_nodes:
+            g.node(n, n[-1])
+            nodes[n[-1]] = n
+        # Conectar en serie (bus)
+        for i in range(len(bus_nodes)-1):
+            g.edge(bus_nodes[i], bus_nodes[i+1])
+    
+    elif template == "Malla":
+        node_list = [prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
+        for n in node_list:
+            g.node(n, n[-1])
+            nodes[n[-1]] = n
+        # Conectar todos con todos
+        for i in range(len(node_list)):
+            for j in range(i+1, len(node_list)):
+                g.edge(node_list[i], node_list[j])
+    
+    elif template == "Libre (vacía)":
+        g.node(prefix+"X", "X", shape="plaintext")
+        nodes = {"X": prefix+"X"}
+    
+    elif template == "Mixta (combinada)":
+        g.node(prefix+"M", "Mixta", shape="plaintext")
+        nodes = {"M": prefix+"M"}
+    
+    return nodes
+def render_topology_graph(name: str, templates: list[str], union_label: str = "HUB") -> str:
+    """Genera un archivo PNG con la topología combinada usando Graphviz."""
+    try:
+        g = Graph(name, format="png", engine='neato')
+        g.attr(overlap="false")
+        g.attr(splines="true")
+        g.attr(rankdir="LR")
+        g.attr(nodesep="0.5")  # Espacio entre nodos
+        g.attr(ranksep="1.0")  # Espacio entre niveles
+
+        if not templates:
+            g.node("empty", "(sin bloques)", shape="plaintext")
+        elif len(templates) == 1:
+            # Para una sola plantilla, mostrarla directamente
+            graphviz_preview_for(templates[0], g)
+        else:
+            # Para múltiples plantillas, conectar solo los nodos del tipo especificado por el usuario
+            selected_nodes = []
+            
+            for i, tpl in enumerate(templates, 1):
+                # Crear un prefijo único para cada plantilla
+                prefix = f"{tpl[:3]}_{i}_"
+                nodes = graphviz_preview_for(tpl, g, base=prefix)
+                
+                # Buscar el nodo del tipo especificado por el usuario
+                if union_label in nodes:
+                    selected_nodes.append(nodes[union_label])
+                    # Etiquetar el nodo para mayor claridad
+                    g.node(nodes[union_label], f"{union_label}_{i}", shape="circle")
+                else:
+                    # Si el nodo especificado no existe, informar al usuario
+                    available_nodes = list(nodes.keys())
+                    print(f"⚠️  Nodo '{union_label}' no encontrado en plantilla '{tpl}'. Nodos disponibles: {', '.join(available_nodes)}")
+            
+            # Conectar todos los nodos del tipo seleccionado en una cadena
+            if len(selected_nodes) > 1:
+                for i in range(len(selected_nodes) - 1):
+                    g.edge(selected_nodes[i], selected_nodes[i + 1], color="blue")
+            else:
+                print(f"ℹ️  No hay suficientes nodos '{union_label}' para conectar.")
+
+        output_file = g.render(filename=f"topologia_{name}", cleanup=True, format="png")
+        print(f"📊 Topología renderizada en: {output_file}")
+        return output_file
+    except Exception as e:
+        print(f"❌ Error al renderizar la topología: {e}")
+        print("⚠️  Asegúrate de tener Graphviz instalado y en el PATH")
+        return ""
+
 def ascii_preview_for(template: str) -> str:
     """Arte ASCII simple por plantilla."""
     if template == "Punto a Punto":
@@ -171,10 +290,23 @@ def ascii_preview_summary(selected: List[str]) -> None:
         print()
         print(ascii_preview_for(tpl))
 
+def open_image(filename: str) -> None:
+    """Intenta abrir la imagen con el visor predeterminado del sistema"""
+    try:
+        if platform.system() == "Darwin":  # macOS
+            subprocess.call(("open", filename))
+        elif platform.system() == "Windows":  # Windows
+            os.startfile(filename)
+        else:  # Linux
+            subprocess.call(("xdg-open", filename))
+        print(f"✅ Imagen abierta: {filename}")
+    except Exception as e:
+        print(f"❌ No se pudo abrir la imagen: {e}")
+
 # -------------------- Menús comunes / submenús --------------------
 def show_templates_menu(selected: Optional[List[str]] = None) -> List[str]:
     """
-    Submenú para seleccionar y mezclar plantillas como bloques.
+    Submenú para seleccionar и mezclar plantillas como bloques.
     Se pueden elegir múltiples. Muestra feedback inmediato y vista ASCII.
     """
     if selected is None:
@@ -206,6 +338,137 @@ def show_templates_menu(selected: Optional[List[str]] = None) -> List[str]:
         print(ascii_preview_for(tpl))
         pause("\n(Enter para continuar...)")
 
+def export_topology_json(topo: Dict, filename: str = "topologia_export.json") -> None:
+    """
+    Exporta la topología simulada a un archivo JSON compatible con vis-network.
+    Conecta específicamente los nodos del tipo especificado por el usuario.
+    """
+    def plantilla_a_grafo(plantilla, base="", union_label="A"):
+        nodes, edges = [], []
+        prefix = base + plantilla[:3]
+        connection_node = None
+        
+        if plantilla == "Punto a Punto":
+            nodes += [prefix+"A", prefix+"B"]
+            edges.append({"from": prefix+"A", "to": prefix+"B"})
+            # Usar el nodo especificado por el usuario si existe
+            if union_label in ["A", "B"]:
+                connection_node = prefix + union_label
+            else:
+                connection_node = prefix+"A"  # Fallback
+                
+        elif plantilla == "Estrella":
+            nodes.append(prefix+"C")
+            for node in ["A", "B", "D", "E"]:
+                nodes.append(prefix+node)
+                edges.append({"from": prefix+"C", "to": prefix+node})
+            # Usar el nodo especificado por el usuario si existe
+            if union_label in ["A", "B", "C", "D", "E"]:
+                connection_node = prefix + union_label
+            else:
+                connection_node = prefix+"C"  # Fallback
+                
+        elif plantilla == "Anillo":
+            nodes += [prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
+            edges += [
+                {"from": prefix+"A", "to": prefix+"B"},
+                {"from": prefix+"B", "to": prefix+"C"},
+                {"from": prefix+"C", "to": prefix+"D"},
+                {"from": prefix+"D", "to": prefix+"A"},
+            ]
+            # Usar el nodo especificado por el usuario si existe
+            if union_label in ["A", "B", "C", "D"]:
+                connection_node = prefix + union_label
+            else:
+                connection_node = prefix+"A"  # Fallback
+                
+        elif plantilla == "Árbol":
+            nodes += [prefix+"R", prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
+            edges += [
+                {"from": prefix+"R", "to": prefix+"A"},
+                {"from": prefix+"R", "to": prefix+"B"},
+                {"from": prefix+"B", "to": prefix+"C"},
+                {"from": prefix+"B", "to": prefix+"D"},
+            ]
+            # Usar el nodo especificado por el usuario si existe
+            if union_label in ["R", "A", "B", "C", "D"]:
+                connection_node = prefix + union_label
+            else:
+                connection_node = prefix+"R"  # Fallback
+                
+        elif plantilla == "Bus":
+            nodes += [prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
+            # Conectar en serie (bus)
+            for i in range(len(nodes)-1):
+                edges.append({"from": nodes[i], "to": nodes[i+1]})
+            # Usar el nodo especificado por el usuario si existe
+            if union_label in ["A", "B", "C", "D"]:
+                connection_node = prefix + union_label
+            else:
+                connection_node = prefix+"A"  # Fallback
+                
+        elif plantilla == "Malla":
+            nodes += [prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
+            # Conectar todos con todos
+            for i in range(len(nodes)):
+                for j in range(i+1, len(nodes)):
+                    edges.append({"from": nodes[i], "to": nodes[j]})
+            # Usar el nodo especificado por el usuario si existe
+            if union_label in ["A", "B", "C", "D"]:
+                connection_node = prefix + union_label
+            else:
+                connection_node = prefix+"A"  # Fallback
+                
+        elif plantilla == "Libre (vacía)":
+            nodes.append(prefix+"X")
+            connection_node = prefix+"X"
+            
+        elif plantilla == "Mixta (combinada)":
+            nodes.append(prefix+"M")
+            connection_node = prefix+"M"
+            
+        return nodes, edges, connection_node
+
+    all_nodes, all_edges = [], []
+    connection_nodes = []
+    union_label = topo.get("union_label", "HUB")
+    
+    if topo["plantillas"]:
+        for i, tpl in enumerate(topo["plantillas"], 1):
+            base_prefix = f"{union_label}_{i}_"
+            nodes, edges, connection_node = plantilla_a_grafo(tpl, base=base_prefix, union_label=union_label)
+            all_nodes += nodes
+            all_edges += edges
+            
+            # Solo conectar si encontramos el nodo especificado por el usuario
+            if connection_node:
+                connection_nodes.append(connection_node)
+            else:
+                print(f"⚠️  No se encontró el nodo '{union_label}' en la plantilla '{tpl}'")
+        
+        # Conectar los nodos del tipo especificado por el usuario
+        if len(connection_nodes) > 1:
+            for i in range(len(connection_nodes) - 1):
+                all_edges.append({"from": connection_nodes[i], "to": connection_nodes[i + 1]})
+        else:
+            print(f"⚠️  No hay suficientes nodos '{union_label}' para conectar")
+    else:
+        all_nodes.append("empty")
+
+    # Eliminar duplicados manteniendo el orden
+    unique_nodes = []
+    seen = set()
+    for node in all_nodes:
+        if node not in seen:
+            seen.add(node)
+            unique_nodes.append(node)
+    
+    nodes_json = [{"id": n, "label": n} for n in unique_nodes]
+    edges_json = [{"from": e["from"], "to": e["to"]} for e in all_edges]
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump({"nodes": nodes_json, "edges": edges_json}, f, indent=2)
+    print(f"🌐 Topología exportada a {filename}")
 
 def create_topology_flow(user: Dict) -> None:
     """
@@ -250,8 +513,17 @@ def create_topology_flow(user: Dict) -> None:
         "union_label": union_label,
     })
     print(f"✅ Topología '{nombre}' (ID {topo_id}) registrada (simulada).")
-    pause()
+    export_topology_json(_FAKE_TOPOLOGIES[-1])
 
+    # 🚀 Render con Graphviz
+    output_file = render_topology_graph(nombre, bloques, union_label)
+    if output_file:
+        # Preguntar si desea abrir la imagen
+        abrir = read_str("¿Deseas abrir la imagen de la topología? (s/n): ").lower()
+        if abrir == 's':
+            open_image(output_file)
+
+    pause()
 # ------------------- COMBINACIÓN DE BLOQUES (ASCII) -------------------
 def combined_ascii(selected: List[str], union_label: str = "HUB") -> str:
     """
@@ -311,14 +583,22 @@ def view_topology_detail(user: Dict, scope_all: bool = False) -> None:
         print(f"Nombre: {t['nombre']}")
         print(f"Propietario: {t['propietario']}")
         print(f"Plantillas/blq.: {', '.join(t['plantillas']) or '(vacía)'}")
+        
+        # Mostrar vista ASCII de la topología
+        print("\n--- Vista ASCII de la topología ---")
         ascii_preview_summary(t['plantillas'])
-        # Aquí se podrían añadir métricas en tiempo real, endpoints, etc.
-        print("\n📈 Monitoreo: aún no implementado.")
-        # Vista combinada si aplica
-        if t.get('plantillas') and len(t['plantillas']) >= 2:
-            ulabel = t.get('union_label', 'HUB')
-            print("🧷 Vista COMBINADA:")
-            print(combined_ascii(t['plantillas'], ulabel))
+        
+        # 🚀 Render gráfico con Graphviz
+        output_file = render_topology_graph(
+            t["nombre"],
+            t["plantillas"],
+            t.get("union_label", "HUB")
+        )
+        if output_file:
+            # Preguntar si desea abrir la imagen
+            abrir = read_str("¿Deseas abrir la imagen de la topología? (s/n): ").lower()
+            if abrir == 's':
+                open_image(output_file)
     pause()
 
 def update_topology(user: Dict) -> None:
@@ -343,9 +623,25 @@ def update_topology(user: Dict) -> None:
         nuevo = read_str("Nuevo nombre: ")
         t["nombre"] = nuevo
         print("✅ Nombre actualizado.")
+        output_file = render_topology_graph(
+            t["nombre"],
+            t["plantillas"],
+            t.get("union_label", "HUB")
+        )
+        if output_file:
+            # Preguntar si desea abrir la imagen
+            abrir = read_str("¿Deseas abrir la imagen de la topología? (s/n): ").lower()
+            if abrir == 's':
+                open_image(output_file)
     elif op == 2:
         t["plantillas"] = show_templates_menu(t["plantillas"][:])
         print("✅ Bloques actualizados.")
+        output_file = render_topology_graph(t["nombre"], t["plantillas"], t.get("union_label", "HUB"))
+        if output_file:
+            # Preguntar si desea abrir la imagen
+            abrir = read_str("¿Deseas abrir la imagen de la topología? (s/n): ").lower()
+            if abrir == 's':
+                open_image(output_file)
     elif op == 3:
         not_impl("Actualización de recursos")
     pause()
@@ -385,7 +681,14 @@ def duplicate_topology(user: Dict) -> None:
     pause()
 
 def export_topology(user: Dict) -> None:
-    not_impl("Exportar topología a JSON/YAML")
+    # Exporta la última topología del usuario (puedes mejorar la selección)
+    user_topos = [t for t in _FAKE_TOPOLOGIES if t["propietario"] == user["username"]]
+    if not user_topos:
+        print("❌ No tienes topologías para exportar.")
+    else:
+        topo = user_topos[-1]
+        export_topology_json(topo)
+    pause()
 
 def import_topology(user: Dict) -> None:
     not_impl("Importar topología desde JSON/YAML")

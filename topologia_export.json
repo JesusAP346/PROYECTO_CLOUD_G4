@@ -1,0 +1,70 @@
+{
+  "nodes": [
+    {
+      "id": "C_1_AniA",
+      "label": "C_1_AniA"
+    },
+    {
+      "id": "C_1_AniB",
+      "label": "C_1_AniB"
+    },
+    {
+      "id": "C_1_AniC",
+      "label": "C_1_AniC"
+    },
+    {
+      "id": "C_1_AniD",
+      "label": "C_1_AniD"
+    },
+    {
+      "id": "C_2_BusA",
+      "label": "C_2_BusA"
+    },
+    {
+      "id": "C_2_BusB",
+      "label": "C_2_BusB"
+    },
+    {
+      "id": "C_2_BusC",
+      "label": "C_2_BusC"
+    },
+    {
+      "id": "C_2_BusD",
+      "label": "C_2_BusD"
+    }
+  ],
+  "edges": [
+    {
+      "from": "C_1_AniA",
+      "to": "C_1_AniB"
+    },
+    {
+      "from": "C_1_AniB",
+      "to": "C_1_AniC"
+    },
+    {
+      "from": "C_1_AniC",
+      "to": "C_1_AniD"
+    },
+    {
+      "from": "C_1_AniD",
+      "to": "C_1_AniA"
+    },
+    {
+      "from": "C_2_BusA",
+      "to": "C_2_BusB"
+    },
+    {
+      "from": "C_2_BusB",
+      "to": "C_2_BusC"
+    },
+    {
+      "from": "C_2_BusC",
+      "to": "C_2_BusD"
+    },
+    {
+      "from": "C_1_AniC",
+      "to": "C_2_BusC"
+    }
+  ]
+}

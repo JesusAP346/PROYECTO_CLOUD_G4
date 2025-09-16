@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Topología interactiva - vis-network</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto; }
+    #toolbar { padding:10px; background:#0b1220; color:#e5e7eb; display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+    #net { width: 100%; height: calc(100% - 56px); background:#0b1220; }
+    button, select { background:#1f2937; color:#e5e7eb; border:1px solid #374151; border-radius:8px; padding:6px 10px; cursor:pointer; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+</head>
+<body>
+  <div id="toolbar">
+    <span>vis-network (física/drag & drop)</span>
+    <button id="fit">Fit</button>
+    <button id="physics">Toggle física</button>
+    <select id="layout">
+      <option value="none" selected>Libre (física)</option>
+      <option value="hierarchical">Jerárquico (Core → Acceso → Hosts)</option>
+    </select>
+    <button id="apply">Aplicar layout</button>
+    <button id="export">Exportar PNG</button>
+  </div>
+  <div id="net"></div>
+
+  <script>
+    // === EDITA ESTO: datos de tu topología ===
+    const nodes = new vis.DataSet([
+      { id: 'sw-core-1', label: 'SW Core 1', group: 'switch' },
+      { id: 'sw-acc-1',  label: 'SW Acceso 1', group: 'switch' },
+      { id: 'sw-acc-2',  label: 'SW Acceso 2', group: 'switch' },
+      { id: 'vm-a',      label: 'VM-A', group: 'vm' },
+      { id: 'vm-b',      label: 'VM-B', group: 'vm' },
+      { id: 'ap-1',      label: 'AP-1', group: 'ap' },
+      { id: 'ap-2',      label: 'AP-2', group: 'ap' }
+    ]);
+
+    const edges = new vis.DataSet([
+      { id:'e1', from:'sw-core-1', to:'sw-acc-1', label:'VLAN 123', arrows:'to' },
+      { id:'e2', from:'sw-core-1', to:'sw-acc-2', label:'VLAN 124', arrows:'to' },
+      { id:'e3', from:'sw-acc-1',  to:'vm-a',     label:'L2', arrows:'to' },
+      { id:'e4', from:'sw-acc-1',  to:'ap-1',     label:'L2', arrows:'to' },
+      { id:'e5', from:'sw-acc-2',  to:'vm-b',     label:'L2', arrows:'to' },
+      { id:'e6', from:'sw-acc-2',  to:'ap-2',     label:'L2', arrows:'to' }
+    ]);
+    // =========================================
+
+    const container = document.getElementById('net');
+    const options = {
+      autoResize: true,
+      interaction: { hover: true, dragNodes: true, dragView: true, zoomView: true },
+      physics: { enabled: true, solver: 'barnesHut', stabilization: { iterations: 250 } },
+      groups: {
+        switch: { shape:'box',   color:{ background:'#60a5fa', border:'#1f2937' } },
+        vm:     { shape:'dot',   color:{ background:'#34d399', border:'#065f46' }, size:18 },
+        ap:     { shape:'diamond', color:{ background:'#fbbf24', border:'#92400e' }, size:20 }
+      },
+      edges: {
+        color: { color:'#93c5fd' },
+        smooth: { type:'dynamic' },
+        font: { color:'#93c5fd', strokeWidth:0, size:12 },
+        arrows: { to: { enabled:true, scaleFactor:0.8 } }
+      }
+    };
+    let network = new vis.Network(container, { nodes, edges }, options);
+
+    document.getElementById('fit').onclick = () => network.fit();
+    document.getElementById('physics').onclick = () => {
+      const enabled = network.physics.options.enabled;
+      network.setOptions({ physics: { enabled: !enabled } });
+    };
+    document.getElementById('apply').onclick = () => {
+      const val = document.getElementById('layout').value;
+      if(val === 'hierarchical'){
+        network.setOptions({
+          layout: { hierarchical: { direction: 'LR', levelSeparation: 150, nodeSpacing: 120 } },
+          physics: { enabled: false }
+        });
+      } else {
+        network.setOptions({
+          layout: { hierarchical: false },
+          physics: { enabled: true }
+        });
+      }
+    };
+    document.getElementById('export').onclick = () => {
+      const canvas = container.getElementsByTagName('canvas')[0];
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = 'topologia_vis.png';
+      a.click();
+    };
+
+    // Tooltip / click info
+    network.on("click", function (params) {
+      if (params.nodes.length) {
+        const n = nodes.get(params.nodes[0]);
+        alert('Nodo\\n' + JSON.stringify(n, null, 2));
+      }
+    });
+
+    // Cargar topología desde JSON exportado por Python
+    async function cargarTopologiaJSON() {
+      try {
+        const resp = await fetch('topologia_export.json');
+        const data = await resp.json();
+        nodes.clear();
+        edges.clear();
+        nodes.add(data.nodes);
+        edges.add(data.edges);
+        network.fit();
+      } catch (e) {
+        alert("No se pudo cargar topologia_export.json");
+      }
+    }
+
+    // Botón para cargar el JSON
+    const btn = document.createElement('button');
+    btn.textContent = "Cargar topología exportada";
+    btn.onclick = cargarTopologiaJSON;
+    document.getElementById('toolbar').appendChild(btn);
+
+    // Opcional: cargar automáticamente al abrir la página
+    // cargarTopologiaJSON();
+  </script>
+</body>
+</html>
