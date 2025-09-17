@@ -186,53 +186,64 @@ def graphviz_preview_for(template: str, g: Graph, base: str = "") -> dict:
         nodes = {"M": prefix+"M"}
     
     return nodes
-def render_topology_graph(name: str, templates: list[str], union_label: str = "HUB") -> str:
+def render_topology_graph(name: str, templates: list[str], union_label: str = "HUB", conexiones_personalizadas: List[Dict] = None) -> str:
     """Genera un archivo PNG con la topología combinada usando Graphviz."""
     try:
         g = Graph(name, format="png", engine='neato')
         g.attr(overlap="false")
         g.attr(splines="true")
         g.attr(rankdir="LR")
-        g.attr(nodesep="0.5")  # Espacio entre nodos
-        g.attr(ranksep="1.0")  # Espacio entre niveles
+        g.attr(nodesep="0.5")
+        g.attr(ranksep="1.0")
 
         if not templates:
             g.node("empty", "(sin bloques)", shape="plaintext")
         elif len(templates) == 1:
-            # Para una sola plantilla, mostrarla directamente
             graphviz_preview_for(templates[0], g)
         else:
-            # Para múltiples plantillas, conectar solo los nodos del tipo especificado por el usuario
-            selected_nodes = []
+            # Almacenar información de todos los nodos
+            todos_los_nodos = {}
             
             for i, tpl in enumerate(templates, 1):
-                # Crear un prefijo único para cada plantilla
                 prefix = f"{tpl[:3]}_{i}_"
                 nodes = graphviz_preview_for(tpl, g, base=prefix)
-                
-                # Buscar el nodo del tipo especificado por el usuario
-                if union_label in nodes:
-                    selected_nodes.append(nodes[union_label])
-                    # Etiquetar el nodo para mayor claridad
-                    g.node(nodes[union_label], f"{union_label}_{i}", shape="circle")
-                else:
-                    # Si el nodo especificado no existe, informar al usuario
-                    available_nodes = list(nodes.keys())
-                    print(f"⚠️  Nodo '{union_label}' no encontrado en plantilla '{tpl}'. Nodos disponibles: {', '.join(available_nodes)}")
+                todos_los_nodos[tpl] = {"prefix": prefix, "nodes": nodes}
             
-            # Conectar todos los nodos del tipo seleccionado en una cadena
-            if len(selected_nodes) > 1:
-                for i in range(len(selected_nodes) - 1):
-                    g.edge(selected_nodes[i], selected_nodes[i + 1], color="blue")
+            # Manejar conexiones personalizadas o automáticas
+            if conexiones_personalizadas:
+                # Conexiones personalizadas
+                for conexion in conexiones_personalizadas:
+                    tpl_origen = conexion["bloque_origen"]
+                    tpl_destino = conexion["bloque_destino"]
+                    nodo_origen = conexion["nodo_origen"]
+                    nodo_destino = conexion["nodo_destino"]
+                    
+                    # Encontrar los nodos reales
+                    nodo_real_origen = todos_los_nodos[tpl_origen]["nodes"].get(nodo_origen)
+                    nodo_real_destino = todos_los_nodos[tpl_destino]["nodes"].get(nodo_destino)
+                    
+                    if nodo_real_origen and nodo_real_destino:
+                        g.edge(nodo_real_origen, nodo_real_destino, color="red", style="bold")
             else:
-                print(f"ℹ️  No hay suficientes nodos '{union_label}' para conectar.")
+                # Conexión automática (comportamiento original)
+                selected_nodes = []
+                for i, tpl in enumerate(templates, 1):
+                    prefix = f"{tpl[:3]}_{i}_"
+                    nodes = graphviz_preview_for(tpl, g, base=prefix)
+                    
+                    if union_label in nodes:
+                        selected_nodes.append(nodes[union_label])
+                        g.node(nodes[union_label], f"{union_label}_{i}", shape="circle")
+                
+                if len(selected_nodes) > 1:
+                    for i in range(len(selected_nodes) - 1):
+                        g.edge(selected_nodes[i], selected_nodes[i + 1], color="blue")
 
         output_file = g.render(filename=f"topologia_{name}", cleanup=True, format="png")
         print(f"📊 Topología renderizada en: {output_file}")
         return output_file
     except Exception as e:
         print(f"❌ Error al renderizar la topología: {e}")
-        print("⚠️  Asegúrate de tener Graphviz instalado y en el PATH")
         return ""
 
 def ascii_preview_for(template: str) -> str:
@@ -343,119 +354,138 @@ def export_topology_json(topo: Dict, filename: str = "topologia_export.json") ->
     Exporta la topología simulada a un archivo JSON compatible con vis-network.
     Conecta específicamente los nodos del tipo especificado por el usuario.
     """
+    # Mapeo de abreviaturas para cada tipo de topología
+    abreviatura_topologia = {
+        "Punto a Punto": "Punto",
+        "Estrella": "Est",
+        "Anillo": "Ani",
+        "Árbol": "Árb",
+        "Bus": "Bus",
+        "Malla": "Mal",
+        "Libre (vacía)": "Lib",
+        "Mixta (combinada)": "Mix"
+    }
+    
     def plantilla_a_grafo(plantilla, base="", union_label="A"):
         nodes, edges = [], []
-        prefix = base + plantilla[:3]
+        # Usar abreviatura en lugar del prefijo genérico
+        abreviatura = abreviatura_topologia.get(plantilla, plantilla[:3])
+        prefix = f"{abreviatura}_{base}" if base else abreviatura
         connection_node = None
         
         if plantilla == "Punto a Punto":
-            nodes += [prefix+"A", prefix+"B"]
-            edges.append({"from": prefix+"A", "to": prefix+"B"})
-            # Usar el nodo especificado por el usuario si existe
+            nodes += [f"{prefix}A", f"{prefix}B"]
+            edges.append({"from": f"{prefix}A", "to": f"{prefix}B"})
             if union_label in ["A", "B"]:
-                connection_node = prefix + union_label
+                connection_node = f"{prefix}{union_label}"
             else:
-                connection_node = prefix+"A"  # Fallback
+                connection_node = f"{prefix}A"
                 
         elif plantilla == "Estrella":
-            nodes.append(prefix+"C")
+            nodes.append(f"{prefix}C")
             for node in ["A", "B", "D", "E"]:
-                nodes.append(prefix+node)
-                edges.append({"from": prefix+"C", "to": prefix+node})
-            # Usar el nodo especificado por el usuario si existe
+                nodes.append(f"{prefix}{node}")
+                edges.append({"from": f"{prefix}C", "to": f"{prefix}{node}"})
             if union_label in ["A", "B", "C", "D", "E"]:
-                connection_node = prefix + union_label
+                connection_node = f"{prefix}{union_label}"
             else:
-                connection_node = prefix+"C"  # Fallback
+                connection_node = f"{prefix}C"
                 
         elif plantilla == "Anillo":
-            nodes += [prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
+            nodes += [f"{prefix}A", f"{prefix}B", f"{prefix}C", f"{prefix}D"]
             edges += [
-                {"from": prefix+"A", "to": prefix+"B"},
-                {"from": prefix+"B", "to": prefix+"C"},
-                {"from": prefix+"C", "to": prefix+"D"},
-                {"from": prefix+"D", "to": prefix+"A"},
+                {"from": f"{prefix}A", "to": f"{prefix}B"},
+                {"from": f"{prefix}B", "to": f"{prefix}C"},
+                {"from": f"{prefix}C", "to": f"{prefix}D"},
+                {"from": f"{prefix}D", "to": f"{prefix}A"},
             ]
-            # Usar el nodo especificado por el usuario si existe
             if union_label in ["A", "B", "C", "D"]:
-                connection_node = prefix + union_label
+                connection_node = f"{prefix}{union_label}"
             else:
-                connection_node = prefix+"A"  # Fallback
+                connection_node = f"{prefix}A"
                 
         elif plantilla == "Árbol":
-            nodes += [prefix+"R", prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
+            nodes += [f"{prefix}R", f"{prefix}A", f"{prefix}B", f"{prefix}C", f"{prefix}D"]
             edges += [
-                {"from": prefix+"R", "to": prefix+"A"},
-                {"from": prefix+"R", "to": prefix+"B"},
-                {"from": prefix+"B", "to": prefix+"C"},
-                {"from": prefix+"B", "to": prefix+"D"},
+                {"from": f"{prefix}R", "to": f"{prefix}A"},
+                {"from": f"{prefix}R", "to": f"{prefix}B"},
+                {"from": f"{prefix}B", "to": f"{prefix}C"},
+                {"from": f"{prefix}B", "to": f"{prefix}D"},
             ]
-            # Usar el nodo especificado por el usuario si existe
             if union_label in ["R", "A", "B", "C", "D"]:
-                connection_node = prefix + union_label
+                connection_node = f"{prefix}{union_label}"
             else:
-                connection_node = prefix+"R"  # Fallback
+                connection_node = f"{prefix}R"
                 
         elif plantilla == "Bus":
-            nodes += [prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
-            # Conectar en serie (bus)
+            nodes += [f"{prefix}A", f"{prefix}B", f"{prefix}C", f"{prefix}D"]
             for i in range(len(nodes)-1):
                 edges.append({"from": nodes[i], "to": nodes[i+1]})
-            # Usar el nodo especificado por el usuario si existe
             if union_label in ["A", "B", "C", "D"]:
-                connection_node = prefix + union_label
+                connection_node = f"{prefix}{union_label}"
             else:
-                connection_node = prefix+"A"  # Fallback
+                connection_node = f"{prefix}A"
                 
         elif plantilla == "Malla":
-            nodes += [prefix+"A", prefix+"B", prefix+"C", prefix+"D"]
-            # Conectar todos con todos
+            nodes += [f"{prefix}A", f"{prefix}B", f"{prefix}C", f"{prefix}D"]
             for i in range(len(nodes)):
                 for j in range(i+1, len(nodes)):
                     edges.append({"from": nodes[i], "to": nodes[j]})
-            # Usar el nodo especificado por el usuario si existe
             if union_label in ["A", "B", "C", "D"]:
-                connection_node = prefix + union_label
+                connection_node = f"{prefix}{union_label}"
             else:
-                connection_node = prefix+"A"  # Fallback
+                connection_node = f"{prefix}A"
                 
         elif plantilla == "Libre (vacía)":
-            nodes.append(prefix+"X")
-            connection_node = prefix+"X"
+            nodes.append(f"{prefix}X")
+            connection_node = f"{prefix}X"
             
         elif plantilla == "Mixta (combinada)":
-            nodes.append(prefix+"M")
-            connection_node = prefix+"M"
+            nodes.append(f"{prefix}M")
+            connection_node = f"{prefix}M"
             
         return nodes, edges, connection_node
 
     all_nodes, all_edges = [], []
     connection_nodes = []
     union_label = topo.get("union_label", "HUB")
+    conexiones_personalizadas = topo.get("conexiones_personalizadas", [])
     
     if topo["plantillas"]:
+        todos_los_nodos_info = {}
+        
         for i, tpl in enumerate(topo["plantillas"], 1):
-            base_prefix = f"{union_label}_{i}_"
+            base_prefix = f"{i}_"
             nodes, edges, connection_node = plantilla_a_grafo(tpl, base=base_prefix, union_label=union_label)
             all_nodes += nodes
             all_edges += edges
-            
-            # Solo conectar si encontramos el nodo especificado por el usuario
-            if connection_node:
-                connection_nodes.append(connection_node)
-            else:
-                print(f"⚠️  No se encontró el nodo '{union_label}' en la plantilla '{tpl}'")
+            connection_nodes.append(connection_node)
+            todos_los_nodos_info[tpl] = {"prefix": base_prefix, "nodes": nodes, "abreviatura": abreviatura_topologia.get(tpl, tpl[:3])}
         
-        # Conectar los nodos del tipo especificado por el usuario
-        if len(connection_nodes) > 1:
-            for i in range(len(connection_nodes) - 1):
-                all_edges.append({"from": connection_nodes[i], "to": connection_nodes[i + 1]})
+        if conexiones_personalizadas:
+            for conexion in conexiones_personalizadas:
+                tpl_origen = conexion["bloque_origen"]
+                tpl_destino = conexion["bloque_destino"]
+                nodo_origen = conexion["nodo_origen"]
+                nodo_destino = conexion["nodo_destino"]
+                
+                # Encontrar los nodos reales con las abreviaturas correctas
+                abrev_origen = todos_los_nodos_info[tpl_origen]["abreviatura"]
+                abrev_destino = todos_los_nodos_info[tpl_destino]["abreviatura"]
+                prefijo_origen = todos_los_nodos_info[tpl_origen]["prefix"]
+                prefijo_destino = todos_los_nodos_info[tpl_destino]["prefix"]
+                
+                nodo_real_origen = f"{abrev_origen}_{prefijo_origen}{nodo_origen}"
+                nodo_real_destino = f"{abrev_destino}_{prefijo_destino}{nodo_destino}"
+                
+                all_edges.append({"from": nodo_real_origen, "to": nodo_real_destino})
         else:
-            print(f"⚠️  No hay suficientes nodos '{union_label}' para conectar")
+            if len(connection_nodes) > 1:
+                for i in range(len(connection_nodes) - 1):
+                    all_edges.append({"from": connection_nodes[i], "to": connection_nodes[i + 1]})
     else:
         all_nodes.append("empty")
 
-    # Eliminar duplicados manteniendo el orden
     unique_nodes = []
     seen = set()
     for node in all_nodes:
@@ -473,26 +503,37 @@ def export_topology_json(topo: Dict, filename: str = "topologia_export.json") ->
 def create_topology_flow(user: Dict) -> None:
     """
     Flujo de creación de topología con selección de plantillas y
-    configuración textual de recursos (según rol).
-    No crea nada real; solo imprime confirmaciones.
+    configuración de conexiones personalizadas.
     """
     clear_screen()
     print("=== Crear topología ===")
     nombre = read_str("Nombre de la topología: ")
     bloques = show_templates_menu()
+    
+    conexiones_personalizadas = []
     union_label = "HUB"
+    
     if not bloques:
         print("⚠️  No se seleccionaron plantillas. Se creará vacía.")
     else:
         print("📦 Bloques seleccionados:", ", ".join(bloques))
         ascii_preview_summary(bloques)
-        # Si hay más de un bloque, pedir nodo de unión y mostrar COMBINADA
+        
+        # Si hay más de un bloque, permitir conexiones personalizadas
         if len(bloques) >= 2:
-            u = read_str("Elige el NODO DE UNIÓN para combinar bloques (por defecto 'HUB'): ", allow_empty=True)
-            if u:
-                union_label = u
-            print("🧷 Vista COMBINADA alrededor del nodo de unión:")
-            print(combined_ascii(bloques, union_label))
+            print("\n🔗 Configuración de conexiones entre bloques:")
+            print("1) Usar conexión automática (nodo central)")
+            print("2) Configurar conexiones personalizadas")
+            opcion = read_int("Elige opción (1/2): ", 1, 2)
+            
+            if opcion == 1:
+                u = read_str("Elige el NODO DE UNIÓN para combinar bloques (por defecto 'HUB'): ", allow_empty=True)
+                if u:
+                    union_label = u
+            else:
+                # Configurar conexiones personalizadas
+                conexiones_personalizadas = configurar_conexiones_personalizadas(bloques)
+                union_label = "PERSONALIZADO"
 
     limits = RESOURCE_LIMITS[user["role"]]
     print("== Capacidades disponibles según tu rol ==")
@@ -511,19 +552,91 @@ def create_topology_flow(user: Dict) -> None:
         "propietario": user["username"],
         "plantillas": bloques[:],
         "union_label": union_label,
+        "conexiones_personalizadas": conexiones_personalizadas  # NUEVO
     })
     print(f"✅ Topología '{nombre}' (ID {topo_id}) registrada (simulada).")
     export_topology_json(_FAKE_TOPOLOGIES[-1])
 
     # 🚀 Render con Graphviz
-    output_file = render_topology_graph(nombre, bloques, union_label)
+    output_file = render_topology_graph(nombre, bloques, union_label, conexiones_personalizadas)
     if output_file:
-        # Preguntar si desea abrir la imagen
         abrir = read_str("¿Deseas abrir la imagen de la topología? (s/n): ").lower()
         if abrir == 's':
             open_image(output_file)
 
     pause()
+
+def configurar_conexiones_personalizadas(bloques: List[str]) -> List[Dict]:
+    """Permite al usuario configurar conexiones específicas entre nodos de diferentes bloques."""
+    conexiones = []
+    
+    print("\n🎯 Configuración de conexiones personalizadas")
+    print("Puedes conectar cualquier nodo de un bloque con cualquier nodo de otro bloque.")
+    
+    # Validar que hay al menos dos bloques para conectar
+    if len(bloques) < 2:
+        print("❌ Se necesitan al menos dos bloques para configurar conexiones personalizadas.")
+        return conexiones
+    
+    for i in range(len(bloques) - 1):
+        for j in range(i + 1, len(bloques)):
+            print(f"\n--- Conexiones entre {bloques[i]} y {bloques[j]} ---")
+            while True:
+                # Mostrar nodos disponibles en el primer bloque
+                print(f"Nodos disponibles en {bloques[i]}:")
+                nodos_bloque1 = obtener_nodos_disponibles(bloques[i])
+                for idx, nodo in enumerate(nodos_bloque1, 1):
+                    print(f"  {idx}) {nodo}")
+                
+                nodo1_idx = read_int(f"Selecciona nodo de {bloques[i]} (1-{len(nodos_bloque1)}): ", 1, len(nodos_bloque1))
+                nodo1 = nodos_bloque1[nodo1_idx - 1]
+                
+                # Mostrar nodos disponibles en el segundo bloque
+                print(f"Nodos disponibles en {bloques[j]}:")
+                nodos_bloque2 = obtener_nodos_disponibles(bloques[j])
+                for idx, nodo in enumerate(nodos_bloque2, 1):
+                    print(f"  {idx}) {nodo}")
+                
+                nodo2_idx = read_int(f"Selecciona nodo de {bloques[j]} (1-{len(nodos_bloque2)}): ", 1, len(nodos_bloque2))
+                nodo2 = nodos_bloque2[nodo2_idx - 1]
+                
+                # Añadir conexión
+                conexiones.append({
+                    "bloque_origen": bloques[i],
+                    "nodo_origen": nodo1,
+                    "bloque_destino": bloques[j],
+                    "nodo_destino": nodo2
+                })
+                
+                print(f"✅ Conexión añadida: {nodo1} ({bloques[i]}) ↔ {nodo2} ({bloques[j]})")
+                
+                # Preguntar si quiere añadir más conexiones entre estos mismos bloques
+                mas_conexiones = read_str("¿Añadir otra conexión entre estos bloques? (s/n): ").lower()
+                if mas_conexiones != 's':
+                    break  # ✅ Solo rompe el while, no el for j
+
+    return conexiones
+
+
+def obtener_nodos_disponibles(plantilla: str) -> List[str]:
+    """Devuelve los nodos disponibles para una plantilla dada."""
+    if plantilla == "Punto a Punto":
+        return ["A", "B"]
+    elif plantilla == "Estrella":
+        return ["A", "B", "C", "D", "E"]
+    elif plantilla == "Anillo":
+        return ["A", "B", "C", "D"]
+    elif plantilla == "Árbol":
+        return ["A", "B", "C", "D", "R"]
+    elif plantilla == "Bus":
+        return ["A", "B", "C", "D"]
+    elif plantilla == "Malla":
+        return ["A", "B", "C", "D"]
+    elif plantilla == "Libre (vacía)":
+        return ["X"]
+    elif plantilla == "Mixta (combinada)":
+        return ["M"]
+    return []
 # ------------------- COMBINACIÓN DE BLOQUES (ASCII) -------------------
 def combined_ascii(selected: List[str], union_label: str = "HUB") -> str:
     """

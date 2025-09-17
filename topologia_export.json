@@ -1,70 +1,86 @@
 {
   "nodes": [
     {
-      "id": "C_1_AniA",
-      "label": "C_1_AniA"
+      "id": "Ani_1_A",
+      "label": "Ani_1_A"
     },
     {
-      "id": "C_1_AniB",
-      "label": "C_1_AniB"
+      "id": "Ani_1_B",
+      "label": "Ani_1_B"
     },
     {
-      "id": "C_1_AniC",
-      "label": "C_1_AniC"
+      "id": "Ani_1_C",
+      "label": "Ani_1_C"
     },
     {
-      "id": "C_1_AniD",
-      "label": "C_1_AniD"
+      "id": "Ani_1_D",
+      "label": "Ani_1_D"
     },
     {
-      "id": "C_2_BusA",
-      "label": "C_2_BusA"
+      "id": "Mal_2_A",
+      "label": "Mal_2_A"
     },
     {
-      "id": "C_2_BusB",
-      "label": "C_2_BusB"
+      "id": "Mal_2_B",
+      "label": "Mal_2_B"
     },
     {
-      "id": "C_2_BusC",
-      "label": "C_2_BusC"
+      "id": "Mal_2_C",
+      "label": "Mal_2_C"
     },
     {
-      "id": "C_2_BusD",
-      "label": "C_2_BusD"
+      "id": "Mal_2_D",
+      "label": "Mal_2_D"
     }
   ],
   "edges": [
     {
-      "from": "C_1_AniA",
-      "to": "C_1_AniB"
+      "from": "Ani_1_A",
+      "to": "Ani_1_B"
     },
     {
-      "from": "C_1_AniB",
-      "to": "C_1_AniC"
+      "from": "Ani_1_B",
+      "to": "Ani_1_C"
     },
     {
-      "from": "C_1_AniC",
-      "to": "C_1_AniD"
+      "from": "Ani_1_C",
+      "to": "Ani_1_D"
     },
     {
-      "from": "C_1_AniD",
-      "to": "C_1_AniA"
+      "from": "Ani_1_D",
+      "to": "Ani_1_A"
     },
     {
-      "from": "C_2_BusA",
-      "to": "C_2_BusB"
+      "from": "Mal_2_A",
+      "to": "Mal_2_B"
     },
     {
-      "from": "C_2_BusB",
-      "to": "C_2_BusC"
+      "from": "Mal_2_A",
+      "to": "Mal_2_C"
     },
     {
-      "from": "C_2_BusC",
-      "to": "C_2_BusD"
+      "from": "Mal_2_A",
+      "to": "Mal_2_D"
     },
     {
-      "from": "C_1_AniC",
-      "to": "C_2_BusC"
+      "from": "Mal_2_B",
+      "to": "Mal_2_C"
+    },
+    {
+      "from": "Mal_2_B",
+      "to": "Mal_2_D"
+    },
+    {
+      "from": "Mal_2_C",
+      "to": "Mal_2_D"
+    },
+    {
+      "from": "Ani_1_D",
+      "to": "Mal_2_A"
+    },
+    {
+      "from": "Ani_1_B",
+      "to": "Mal_2_C"
     }
   ]
 }
