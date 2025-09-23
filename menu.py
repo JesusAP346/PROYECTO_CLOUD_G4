@@ -6,7 +6,7 @@ Base de menús (texto) para un orquestador tipo Cloud con 3 roles:
 - Común
 - VIP
 - Administrador
-Proyecto: PUCP Private Open Cloud Orchestrator
+Proyecto: TELECLOUD
 El objetivo es servir como "esqueleto" para implementar luego
 las funciones reales. Por ahora, TODO imprime "aún no implementado".
 """
@@ -93,7 +93,7 @@ def login_flow() -> Dict:
     """
     clear_screen()
     print("=" * 60)
-    print("🌐  PUCP Private Open Cloud Orchestrator  🌐".center(60))
+    print("🌐  TELECLOUD  🌐".center(60))
     print("     (Demo de menús por rol)".center(60))
     print("=" * 60)
     print("\nAntes de continuar, selecciona tu rol:")
@@ -930,7 +930,7 @@ def main() -> None:
         again = read_str("¿Iniciar sesión con otro usuario? (s/n): ").lower()
         if again != "s":
             break
-    print("\n👋 ¡Gracias por usar PUCP Private Open Cloud Orchestrator (menú demo)!")
+    print("\n👋 ¡Gracias por usar TELECLOUD (menú demo)!")
 
 if __name__ == "__main__":
     try:
