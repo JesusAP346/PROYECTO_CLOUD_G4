@@ -75,12 +75,12 @@
       "to": "Mal_2_D"
     },
     {
-      "from": "Ani_1_D",
-      "to": "Mal_2_A"
-    },
-    {
       "from": "Ani_1_B",
       "to": "Mal_2_C"
+    },
+    {
+      "from": "Ani_1_A",
+      "to": "Mal_2_D"
     }
   ]
 }
