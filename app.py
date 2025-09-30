@@ -13,9 +13,11 @@ class NetworkTopology:
     
     def generate_topology(self, topology_type, config):
         """Genera una topología específica y la AGREGA a la existente"""
-        center_x = 400
-        center_y = 300
-        radius = 150
+        # Centro del área visible - usar coordenadas más centrales
+        center_x = 5000
+        center_y = 5000
+        # Radio MUY REDUCIDO para máxima compactación
+        base_radius = 200
         
         # NO reiniciamos nodes y edges, los mantenemos
         new_nodes = []
@@ -25,61 +27,55 @@ class NetworkTopology:
         next_id = max([node['id'] for node in self.nodes], default=0) + 1
         
         if topology_type == "point-to-point":
+            # Solo 100px de separación
             new_nodes = [
-                {'id': next_id, 'x': center_x - 100, 'y': center_y, 'label': f'VM-{next_id}'},
-                {'id': next_id + 1, 'x': center_x + 100, 'y': center_y, 'label': f'VM-{next_id + 1}'}
+                {'id': next_id, 'x': center_x - 50, 'y': center_y, 'label': f'VM-{next_id}'},
+                {'id': next_id + 1, 'x': center_x + 50, 'y': center_y, 'label': f'VM-{next_id + 1}'}
             ]
             new_edges = [{'from': next_id, 'to': next_id + 1}]
             
         elif topology_type == "star":
-            # Desplazar ligeramente para evitar superposición
-            center_x += 200
-            center_y += 200
-            
             central_id = next_id
             new_nodes = [{'id': central_id, 'x': center_x, 'y': center_y, 'label': f'VM-{central_id}'}]
             
-            for i in range(config.get('node_count', 5) - 1):
-                angle = (i * 2 * math.pi) / (config.get('node_count', 5) - 1)
+            node_count = config.get('node_count', 5)
+            # Radio muy pequeño para nodos periféricos
+            star_radius = base_radius * 0.8
+            for i in range(node_count - 1):
+                angle = (i * 2 * math.pi) / (node_count - 1)
                 new_id = next_id + i + 1
                 new_nodes.append({
                     'id': new_id,
-                    'x': center_x + radius * math.cos(angle),
-                    'y': center_y + radius * math.sin(angle),
+                    'x': center_x + star_radius * math.cos(angle),
+                    'y': center_y + star_radius * math.sin(angle),
                     'label': f'VM-{new_id}'
                 })
                 new_edges.append({'from': central_id, 'to': new_id})
                 
         elif topology_type == "ring":
-            # Desplazar
-            center_x -= 200
-            center_y += 200
-            
             node_count = config.get('node_count', 5)
+            # Radio muy compacto
+            ring_radius = base_radius * 0.6
             for i in range(node_count):
                 angle = (i * 2 * math.pi) / node_count
                 new_id = next_id + i
                 new_nodes.append({
                     'id': new_id,
-                    'x': center_x + radius * math.cos(angle),
-                    'y': center_y + radius * math.sin(angle),
+                    'x': center_x + ring_radius * math.cos(angle),
+                    'y': center_y + ring_radius * math.sin(angle),
                     'label': f'VM-{new_id}'
                 })
                 # Conectar en anillo
                 if i < node_count - 1:
                     new_edges.append({'from': new_id, 'to': new_id + 1})
                 else:
-                    new_edges.append({'from': new_id, 'to': next_id})  # Conectar último con primero
+                    new_edges.append({'from': new_id, 'to': next_id})
                     
         elif topology_type == "tree":
-            # Desplazar
-            center_x -= 200
-            center_y -= 200
-            
             levels = config.get('tree_levels', 3)
             branching = config.get('tree_branching', 2)
             
-            # Nodo raíz
+            # Nodo raíz en el centro
             root_id = next_id
             new_nodes.append({'id': root_id, 'x': center_x, 'y': center_y, 'label': f'VM-{root_id}'})
             current_level = [{'id': root_id, 'x': center_x, 'y': center_y}]
@@ -88,13 +84,15 @@ class NetworkTopology:
             for level in range(1, levels):
                 next_level = []
                 nodes_in_level = len(current_level) * branching
-                spacing = 400 / (nodes_in_level + 1)  # Reducir spacing para árbol más compacto
-                y = center_y + level * 100
+                # Espaciado MUY COMPACTO
+                level_width = 400  # Ancho fijo muy reducido
+                spacing = level_width / max(1, nodes_in_level)
+                y = center_y + level * 120  # Espaciado vertical mínimo
                 
                 for parent_idx, parent in enumerate(current_level):
                     for i in range(branching):
                         child_idx = parent_idx * branching + i
-                        x = center_x - 200 + spacing * (child_idx + 1)
+                        x = center_x - (level_width / 2) + spacing * (child_idx + 0.5)
                         new_nodes.append({
                             'id': current_id,
                             'x': x,
@@ -108,17 +106,16 @@ class NetworkTopology:
                 current_level = next_level
                 
         elif topology_type == "bus":
-            # Desplazar
-            center_y -= 200
-            
             node_count = config.get('node_count', 5)
-            bus_spacing = 400 / (node_count + 1)
+            # Bus muy compacto
+            bus_width = 300
+            bus_spacing = bus_width / (node_count + 1)
             
             for i in range(node_count):
                 new_id = next_id + i
                 new_nodes.append({
                     'id': new_id,
-                    'x': center_x - 200 + bus_spacing * (i + 1),
+                    'x': center_x - (bus_width / 2) + bus_spacing * (i + 1),
                     'y': center_y,
                     'label': f'VM-{new_id}'
                 })
@@ -126,12 +123,9 @@ class NetworkTopology:
                     new_edges.append({'from': new_id - 1, 'to': new_id})
                     
         elif topology_type == "mesh":
-            # Desplazar
-            center_x += 200
-            center_y -= 200
-            
             node_count = config.get('node_count', 5)
-            mesh_radius = 100
+            # Malla muy compacta
+            mesh_radius = base_radius * 0.5
             
             # Crear nodos
             for i in range(node_count):
@@ -159,11 +153,10 @@ class NetworkTopology:
     
     def add_node(self, x, y):
         """Agrega un nuevo nodo en la posición especificada"""
-        # Si no se proporcionan coordenadas, usar el centro del área infinita
         if x is None or y is None:
             x = 5000
             y = 5000
-        
+            
         new_node = {
             'id': self.next_id,
             'x': x,
@@ -182,7 +175,6 @@ class NetworkTopology:
     
     def connect_nodes(self, from_id, to_id):
         """Conecta dos nodos si no existe ya la conexión"""
-        # Verificar si la conexión ya existe
         existing = any(
             (edge['from'] == from_id and edge['to'] == to_id) or
             (edge['from'] == to_id and edge['to'] == from_id)
@@ -223,7 +215,7 @@ topology = NetworkTopology()
 def index():
     return render_template('index.html')
 
-# API Endpoints
+# API Endpoints (mantener igual que antes)
 @app.route('/api/topology/generate', methods=['POST'])
 def generate_topology():
     data = request.json
@@ -239,7 +231,6 @@ def generate_topology():
 
 @app.route('/api/topology/clear', methods=['POST'])
 def clear_topology():
-    """Limpia toda la topología"""
     topology.nodes = []
     topology.edges = []
     topology.next_id = 1
@@ -252,8 +243,8 @@ def clear_topology():
 @app.route('/api/nodes', methods=['POST'])
 def add_node():
     data = request.json
-    x = data.get('x', 400)
-    y = data.get('y', 300)
+    x = data.get('x', 5000)
+    y = data.get('y', 5000)
     
     new_node = topology.add_node(x, y)
     
@@ -315,6 +306,20 @@ def delete_edge():
 @app.route('/api/topology/state', methods=['GET'])
 def get_topology_state():
     return jsonify(topology.get_state())
+
+@app.route('/api/topology/export', methods=['GET'])
+def export_topology():
+    export_data = {
+        'metadata': {
+            'export_date': datetime.now().isoformat(),
+            'version': '1.0',
+            'total_nodes': len(topology.nodes),
+            'total_connections': len(topology.edges)
+        },
+        'topology': topology.get_state()
+    }
+    
+    return jsonify(export_data)
 
 if __name__ == '__main__':
     app.run(debug=True)

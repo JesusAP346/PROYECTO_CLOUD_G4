@@ -192,9 +192,9 @@ function zoomOut() {
 }
 
 function resetZoom() {
-    scale = 1;
-    translateX = 0;
-    translateY = 0;
+    scale = 1.2; // Un poco de zoom por defecto para mejor visibilidad
+    translateX = -4000 * scale + (elements.svgContainer.clientWidth / 2);
+    translateY = -4000 * scale + (elements.svgContainer.clientHeight / 2);
     applyZoom();
 }
 
@@ -409,6 +409,12 @@ async function generateTopology() {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
+            
+            // Centrado PERFECTO y automático
+            setTimeout(() => {
+                perfectCenterTopology();
+            }, 50);
+            
             showNotification(`Topología ${topologyType} generada exitosamente`, 'success');
         }
     } catch (error) {
@@ -417,10 +423,96 @@ async function generateTopology() {
     }
 }
 
+function perfectCenterTopology() {
+    if (state.nodes.length === 0) return;
+    
+    // Calcular el área ocupada por todos los nodos
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    
+    state.nodes.forEach(node => {
+        minX = Math.min(minX, node.x - 40); // Incluir radio del nodo
+        maxX = Math.max(maxX, node.x + 40);
+        minY = Math.min(minY, node.y - 40);
+        maxY = Math.max(maxY, node.y + 40);
+    });
+    
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+    const contentCenterX = (minX + maxX) / 2;
+    const contentCenterY = (minY + maxY) / 2;
+    
+    // Obtener dimensiones del contenedor visible
+    const container = elements.svgContainer;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    
+    // Calcular escala para que la topología ocupe ~70% del área visible
+    const targetScaleX = (containerWidth * 0.7) / contentWidth;
+    const targetScaleY = (containerHeight * 0.7) / contentHeight;
+    const targetScale = Math.min(targetScaleX, targetScaleY, 2.5); // Limitar zoom máximo
+    
+    // Calcular traslación para centrar perfectamente
+    const targetTranslateX = (containerWidth / 2) - (contentCenterX * targetScale);
+    const targetTranslateY = (containerHeight / 2) - (contentCenterY * targetScale);
+    
+    // Aplicar suavemente la nueva vista
+    scale = targetScale;
+    translateX = targetTranslateX;
+    translateY = targetTranslateY;
+    
+    applyZoom();
+}
+
+// NUEVA FUNCIÓN: Ajustar la vista para que quepa toda la topología
+function fitViewToTopology() {
+    if (state.nodes.length === 0) return;
+    
+    // Calcular el bounding box de todos los nodos
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    
+    state.nodes.forEach(node => {
+        minX = Math.min(minX, node.x);
+        maxX = Math.max(maxX, node.x);
+        minY = Math.min(minY, node.y);
+        maxY = Math.max(maxY, node.y);
+    });
+    
+    // Agregar margen
+    const margin = 200;
+    minX -= margin;
+    maxX += margin;
+    minY -= margin;
+    maxY += margin;
+    
+    const width = maxX - minX;
+    const height = maxY - minY;
+    
+    // Obtener dimensiones del contenedor
+    const containerWidth = elements.svgContainer.clientWidth;
+    const containerHeight = elements.svgContainer.clientHeight;
+    
+    // Calcular escala para que quepa en el contenedor
+    const scaleX = containerWidth / width;
+    const scaleY = containerHeight / height;
+    const newScale = Math.min(scaleX, scaleY, 2); // Limitar zoom máximo a 2x
+    
+    // Calcular traslación para centrar
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    
+    translateX = containerWidth / 2 - centerX * newScale;
+    translateY = containerHeight / 2 - centerY * newScale;
+    scale = newScale;
+    
+    applyZoom();
+}
+
 async function addRandomNode() {
-    // Colocar nodos en posiciones más centrales considerando el área infinita
-    const x = 5000 + (Math.random() - 0.5) * 1000;
-    const y = 5000 + (Math.random() - 0.5) * 1000;
+    // Usar coordenadas cerca del centro pero con variación mínima
+    const x = 5000 + (Math.random() - 0.5) * 200;
+    const y = 5000 + (Math.random() - 0.5) * 200;
     
     try {
         const response = await fetch('/api/nodes', {
@@ -436,11 +528,31 @@ async function addRandomNode() {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
+            
+            // Centrar si hay pocos nodos
+            if (state.nodes.length <= 3) {
+                setTimeout(perfectCenterTopology, 50);
+            }
+            
             showNotification('VM agregada exitosamente', 'success');
         }
     } catch (error) {
         console.error('Error adding node:', error);
         showNotification('Error al agregar la VM', 'error');
+    }
+}
+
+function centerViewOnTopology() {
+    // Calcular el centro aproximado de los nodos
+    if (state.nodes.length > 0) {
+        const avgX = state.nodes.reduce((sum, node) => sum + node.x, 0) / state.nodes.length;
+        const avgY = state.nodes.reduce((sum, node) => sum + node.y, 0) / state.nodes.length;
+        
+        // Ajustar la vista para centrar en el promedio
+        // Esto es aproximado, podrías hacer un cálculo más preciso del bounding box
+        translateX = -avgX * scale + (elements.svgContainer.clientWidth / 2);
+        translateY = -avgY * scale + (elements.svgContainer.clientHeight / 2);
+        applyZoom();
     }
 }
 
