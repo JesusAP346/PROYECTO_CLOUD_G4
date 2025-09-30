@@ -9,7 +9,7 @@ let state = {
     dragOffset: { x: 0, y: 0 }
 };
 
-// Variables para zoom y pan
+// Variables para zoom y pan - SIN LÍMITES
 let scale = 1;
 let translateX = 0;
 let translateY = 0;
@@ -38,7 +38,10 @@ const elements = {
     connectModeIndicator: document.getElementById('connect-mode-indicator'),
     connectStep: document.getElementById('connect-step'),
     emptyState: document.getElementById('empty-state'),
-    svg: document.getElementById('network-svg')
+    svg: document.getElementById('network-svg'),
+    exportBtn: document.getElementById('export-btn'),
+    clearBtn: document.getElementById('clear-btn'), // Nuevo: botón limpiar
+    svgContainer: document.querySelector('.svg-container')
 };
 
 // Inicialización
@@ -47,6 +50,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
     }
+    
+    // Configurar SVG para área infinita
+    setupInfiniteCanvas();
     
     // Cargar estado inicial del servidor
     loadTopologyState();
@@ -57,6 +63,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Aplicar transformación inicial
     applyZoom();
 });
+
+// NUEVA FUNCIÓN: Configurar canvas infinito
+function setupInfiniteCanvas() {
+    // Hacer el SVG extremadamente grande para simular área infinita
+    elements.svg.setAttribute('width', '10000');
+    elements.svg.setAttribute('height', '10000');
+    elements.svg.setAttribute('viewBox', '0 0 10000 10000');
+    
+    // Estilo para permitir área infinita
+    elements.svg.style.minWidth = '100%';
+    elements.svg.style.minHeight = '100%';
+    elements.svg.style.overflow = 'visible';
+}
 
 function setupEventListeners() {
     elements.topologySelect.addEventListener('change', updateUI);
@@ -80,16 +99,26 @@ function setupEventListeners() {
     elements.connectBtn.addEventListener('click', toggleConnectMode);
     elements.deleteNodeBtn.addEventListener('click', deleteSelectedNode);
     
+    // Botón de exportación
+    if (elements.exportBtn) {
+        elements.exportBtn.addEventListener('click', exportTopology);
+    }
+    
+    // NUEVO: Botón de limpiar todo
+    if (elements.clearBtn) {
+        elements.clearBtn.addEventListener('click', clearAll);
+    }
+    
     // Controles de zoom
     document.getElementById('zoom-in').addEventListener('click', zoomIn);
     document.getElementById('zoom-out').addEventListener('click', zoomOut);
     document.getElementById('zoom-reset').addEventListener('click', resetZoom);
     
-    // Zoom con rueda del mouse
-    elements.svg.addEventListener('wheel', handleWheel, { passive: false });
+    // Zoom con rueda del mouse - MEJORADO
+    elements.svgContainer.addEventListener('wheel', handleWheel, { passive: false });
     
-    // Pan (arrastrar)
-    elements.svg.addEventListener('mousedown', startPan);
+    // Pan (arrastrar) - MEJORADO
+    elements.svgContainer.addEventListener('mousedown', startPan);
     document.addEventListener('mousemove', doPan);
     document.addEventListener('mouseup', stopPan);
     
@@ -101,19 +130,65 @@ function setupEventListeners() {
     elements.svg.addEventListener('mouseleave', handleMouseUp);
 }
 
-// Funciones de zoom y pan
-function zoomIn() {
-    if (scale < 3) {
-        scale += 0.1;
-        applyZoom();
+// NUEVA FUNCIÓN: Limpiar toda la topología
+async function clearAll() {
+    if (state.nodes.length === 0) {
+        showNotification('No hay nada que limpiar', 'info');
+        return;
+    }
+    
+    if (!confirm('¿Estás seguro de que quieres eliminar toda la topología? Esta acción no se puede deshacer.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/topology/clear', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            state.nodes = data.topology.nodes;
+            state.edges = data.topology.edges;
+            state.selectedNode = null;
+            state.connectMode = false;
+            state.connectFrom = null;
+            
+            // Resetear UI
+            elements.deleteNodeBtn.classList.add('hidden');
+            elements.connectModeIndicator.classList.add('hidden');
+            elements.connectBtn.textContent = 'Conectar VMs';
+            elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+            elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+            
+            // Resetear vista
+            scale = 1;
+            translateX = 0;
+            translateY = 0;
+            
+            drawTopology();
+            applyZoom();
+            
+            showNotification('Topología limpiada exitosamente', 'success');
+        }
+    } catch (error) {
+        console.error('Error clearing topology:', error);
+        showNotification('Error al limpiar la topología', 'error');
     }
 }
 
+// Funciones de zoom y pan - MEJORADAS para área infinita
+function zoomIn() {
+    scale *= 1.2;
+    applyZoom();
+}
+
 function zoomOut() {
-    if (scale > 0.3) {
-        scale -= 0.1;
-        applyZoom();
-    }
+    scale /= 1.2;
+    applyZoom();
 }
 
 function resetZoom() {
@@ -124,30 +199,40 @@ function resetZoom() {
 }
 
 function applyZoom() {
-    elements.svg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+    // Aplicar transformación al grupo interno en lugar del SVG completo
+    let svgGroup = elements.svg.querySelector('#svg-content-group');
+    if (!svgGroup) {
+        // Crear grupo si no existe
+        svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        svgGroup.id = 'svg-content-group';
+        
+        // Mover todo el contenido existente al grupo
+        while (elements.svg.firstChild) {
+            svgGroup.appendChild(elements.svg.firstChild);
+        }
+        elements.svg.appendChild(svgGroup);
+    }
+    
+    svgGroup.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
     document.getElementById('zoom-reset').textContent = `${Math.round(scale * 100)}%`;
 }
 
 function handleWheel(event) {
     event.preventDefault();
     
-    const rect = elements.svg.getBoundingClientRect();
+    const rect = elements.svgContainer.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
     const mouseY = event.clientY - rect.top;
     
-    const zoomIntensity = 0.001;
-    const wheel = event.deltaY < 0 ? 1 : -1;
-    const zoom = Math.exp(wheel * zoomIntensity);
+    const delta = -Math.sign(event.deltaY);
+    const zoomFactor = 1.1;
     
     // Calcular nueva escala
-    const newScale = scale * zoom;
-    
-    // Limitar zoom
-    if (newScale < 0.3 || newScale > 3) return;
+    const newScale = delta > 0 ? scale * zoomFactor : scale / zoomFactor;
     
     // Calcular desplazamiento para mantener el punto del mouse fijo
-    translateX -= (mouseX - translateX) * (zoom - 1);
-    translateY -= (mouseY - translateY) * (zoom - 1);
+    translateX -= (mouseX - translateX) * (newScale/scale - 1);
+    translateY -= (mouseY - translateY) * (newScale/scale - 1);
     
     scale = newScale;
     applyZoom();
@@ -159,7 +244,7 @@ function startPan(event) {
         isPanning = true;
         startPanX = event.clientX - translateX;
         startPanY = event.clientY - translateY;
-        elements.svg.style.cursor = 'grabbing';
+        elements.svgContainer.style.cursor = 'grabbing';
         event.preventDefault();
     }
 }
@@ -174,7 +259,102 @@ function doPan(event) {
 
 function stopPan() {
     isPanning = false;
-    elements.svg.style.cursor = 'grab';
+    elements.svgContainer.style.cursor = 'grab';
+}
+
+// FUNCIÓN: Exportar topología a JSON
+function exportTopology() {
+    if (state.nodes.length === 0) {
+        showNotification('No hay topología para exportar. Genera o crea una topología primero.', 'info');
+        return;
+    }
+    
+    // Crear objeto de topología
+    const topologyData = {
+        metadata: {
+            exportDate: new Date().toISOString(),
+            version: '1.0',
+            totalNodes: state.nodes.length,
+            totalConnections: state.edges.length
+        },
+        topology: {
+            nodes: state.nodes,
+            edges: state.edges
+        }
+    };
+    
+    // Convertir a JSON con formato legible
+    const jsonData = JSON.stringify(topologyData, null, 2);
+    
+    // Crear blob y enlace de descarga
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    // Crear elemento de descarga
+    const a = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `topologia-red-${timestamp}.json`;
+    
+    // Trigger de descarga
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    // Liberar URL
+    URL.revokeObjectURL(url);
+    
+    // Mostrar mensaje de éxito
+    showNotification('Topología exportada exitosamente', 'success');
+}
+
+// FUNCIÓN MEJORADA: Mostrar notificaciones
+function showNotification(message, type = 'info') {
+    // Crear notificación temporal
+    const notification = document.createElement('div');
+    
+    let bgColor = 'bg-blue-500';
+    let icon = 'info';
+    
+    switch(type) {
+        case 'success':
+            bgColor = 'bg-green-500';
+            icon = 'check-circle';
+            break;
+        case 'error':
+            bgColor = 'bg-red-500';
+            icon = 'alert-circle';
+            break;
+        case 'warning':
+            bgColor = 'bg-yellow-500';
+            icon = 'alert-triangle';
+            break;
+        default:
+            bgColor = 'bg-blue-500';
+            icon = 'info';
+    }
+    
+    notification.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50 notification`;
+    notification.innerHTML = `
+        <div class="flex items-center gap-2">
+            <i data-lucide="${icon}" class="w-5 h-5"></i>
+            <span>${message}</span>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Re-inicializar íconos
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    
+    // Remover después de 3 segundos
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 3000);
 }
 
 function updateUI() {
@@ -229,15 +409,18 @@ async function generateTopology() {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
+            showNotification(`Topología ${topologyType} generada exitosamente`, 'success');
         }
     } catch (error) {
         console.error('Error generating topology:', error);
+        showNotification('Error al generar la topología', 'error');
     }
 }
 
 async function addRandomNode() {
-    const x = 400 + (Math.random() - 0.5) * 200;
-    const y = 300 + (Math.random() - 0.5) * 200;
+    // Colocar nodos en posiciones más centrales considerando el área infinita
+    const x = 5000 + (Math.random() - 0.5) * 1000;
+    const y = 5000 + (Math.random() - 0.5) * 1000;
     
     try {
         const response = await fetch('/api/nodes', {
@@ -253,9 +436,11 @@ async function addRandomNode() {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
+            showNotification('VM agregada exitosamente', 'success');
         }
     } catch (error) {
         console.error('Error adding node:', error);
+        showNotification('Error al agregar la VM', 'error');
     }
 }
 
@@ -269,11 +454,13 @@ function toggleConnectMode() {
         elements.connectBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
         elements.connectModeIndicator.classList.remove('hidden');
         updateConnectStep();
+        showNotification('Modo conexión activado. Selecciona la VM de origen.', 'info');
     } else {
         elements.connectBtn.textContent = 'Conectar VMs';
         elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
         elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
         elements.connectModeIndicator.classList.add('hidden');
+        showNotification('Modo conexión desactivado', 'info');
     }
 }
 
@@ -299,9 +486,11 @@ async function deleteSelectedNode() {
             state.edges = data.topology.edges;
             state.selectedNode = null;
             drawTopology();
+            showNotification('VM eliminada exitosamente', 'success');
         }
     } catch (error) {
         console.error('Error deleting node:', error);
+        showNotification('Error al eliminar la VM', 'error');
     }
 }
 
@@ -324,6 +513,7 @@ function handleNodeClick(nodeId, event) {
             state.connectFrom = nodeId;
             updateConnectStep();
             drawTopology();
+            showNotification(`VM ${nodeId} seleccionada como origen. Ahora selecciona la VM destino.`, 'info');
         } else if (state.connectFrom !== nodeId) {
             connectNodes(state.connectFrom, nodeId);
             state.connectFrom = null;
@@ -353,9 +543,13 @@ async function connectNodes(fromId, toId) {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
+            showNotification(`Conexión establecida entre VM-${fromId} y VM-${toId}`, 'success');
+        } else {
+            showNotification('No se pudo establecer la conexión. Las VMs ya pueden estar conectadas.', 'warning');
         }
     } catch (error) {
         console.error('Error connecting nodes:', error);
+        showNotification('Error al conectar las VMs', 'error');
     }
 }
 
@@ -374,9 +568,11 @@ async function deleteEdge(fromId, toId) {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
+            showNotification(`Conexión eliminada entre VM-${fromId} y VM-${toId}`, 'success');
         }
     } catch (error) {
         console.error('Error deleting edge:', error);
+        showNotification('Error al eliminar la conexión', 'error');
     }
 }
 
@@ -389,8 +585,13 @@ function handleMouseDown(event) {
     
     // Obtener las coordenadas del mouse ajustadas por el zoom y pan
     const rect = elements.svg.getBoundingClientRect();
-    const mouseX = (event.clientX - rect.left - translateX) / scale;
-    const mouseY = (event.clientY - rect.top - translateY) / scale;
+    const point = elements.svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const svgPoint = point.matrixTransform(elements.svg.getScreenCTM().inverse());
+    
+    const mouseX = svgPoint.x;
+    const mouseY = svgPoint.y;
     
     state.draggingNode = nodeId;
     state.dragOffset = {
@@ -405,10 +606,15 @@ function handleMouseDown(event) {
 function handleMouseMove(event) {
     if (!state.draggingNode) return;
     
-    // Obtener las coordenadas del mouse ajustadas por el zoom y pan
+    // Obtener las coordenadas del mouse en el sistema de coordenadas del SVG
     const rect = elements.svg.getBoundingClientRect();
-    const mouseX = (event.clientX - rect.left - translateX) / scale;
-    const mouseY = (event.clientY - rect.top - translateY) / scale;
+    const point = elements.svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const svgPoint = point.matrixTransform(elements.svg.getScreenCTM().inverse());
+    
+    const mouseX = svgPoint.x;
+    const mouseY = svgPoint.y;
     
     const newX = mouseX - state.dragOffset.x;
     const newY = mouseY - state.dragOffset.y;
@@ -451,8 +657,10 @@ function drawTopology() {
     // Limpiar SVG
     elements.svg.innerHTML = '';
     
-    // Aplicar la transformación de zoom y pan al SVG
-    elements.svg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+    // Crear grupo para todo el contenido
+    const svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    svgGroup.id = 'svg-content-group';
+    svgGroup.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
     
     // Dibujar conexiones
     state.edges.forEach(edge => {
@@ -468,7 +676,7 @@ function drawTopology() {
             line.setAttribute('y2', toNode.y);
             line.setAttribute('stroke', '#94a3b8');
             line.setAttribute('stroke-width', '2');
-            elements.svg.appendChild(line);
+            svgGroup.appendChild(line);
             
             // Punto para eliminar conexión (en el medio)
             const midX = (fromNode.x + toNode.x) / 2;
@@ -490,7 +698,7 @@ function drawTopology() {
             deleteCircle.addEventListener('mouseleave', () => {
                 deleteCircle.setAttribute('opacity', '0');
             });
-            elements.svg.appendChild(deleteCircle);
+            svgGroup.appendChild(deleteCircle);
         }
     });
     
@@ -516,7 +724,7 @@ function drawTopology() {
         circle.classList.add('node');
         circle.dataset.nodeId = node.id;
         circle.style.cursor = 'pointer';
-        elements.svg.appendChild(circle);
+        svgGroup.appendChild(circle);
         
         // Texto de la VM (usando foreignObject para HTML)
         const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
@@ -530,7 +738,7 @@ function drawTopology() {
         div.className = 'flex items-center justify-center h-full';
         div.innerHTML = '<i data-lucide="server" class="w-4 h-4 text-white"></i>';
         foreignObject.appendChild(div);
-        elements.svg.appendChild(foreignObject);
+        svgGroup.appendChild(foreignObject);
         
         // Etiqueta del nodo
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -539,8 +747,11 @@ function drawTopology() {
         text.setAttribute('text-anchor', 'middle');
         text.setAttribute('class', 'text-xs font-semibold fill-gray-700 select-none');
         text.textContent = node.label;
-        elements.svg.appendChild(text);
+        svgGroup.appendChild(text);
     });
+    
+    // Agregar grupo al SVG
+    elements.svg.appendChild(svgGroup);
     
     // Actualizar estadísticas
     elements.nodeCountDisplay.textContent = state.nodes.length;

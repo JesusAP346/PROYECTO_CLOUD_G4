@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 import math
 import json
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -158,6 +159,11 @@ class NetworkTopology:
     
     def add_node(self, x, y):
         """Agrega un nuevo nodo en la posición especificada"""
+        # Si no se proporcionan coordenadas, usar el centro del área infinita
+        if x is None or y is None:
+            x = 5000
+            y = 5000
+        
         new_node = {
             'id': self.next_id,
             'x': x,

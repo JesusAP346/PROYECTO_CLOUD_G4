@@ -73,6 +73,12 @@
                         Conectar VMs
                     </button>
 
+                    <!-- NUEVO BOTÓN DE EXPORTACIÓN -->
+                    <button id="export-btn" class="w-full py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 mb-2 flex items-center justify-center gap-2 transition-colors">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        Exportar JSON
+                    </button>
+
                     <button id="delete-node-btn" class="w-full py-2 bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center gap-2 transition-colors hidden">
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                         Eliminar VM-<span id="selected-node-id"></span>
@@ -120,7 +126,7 @@
                             <button id="zoom-reset" class="zoom-btn zoom-reset" title="Resetear zoom">100%</button>
                         </div>
                         
-                        <svg id="network-svg" width="800" height="600" class="w-full bg-gray-50">
+                        <svg id="network-svg" class="w-full h-full bg-gray-50">
                             <!-- Las conexiones y nodos se dibujarán aquí -->
                         </svg>
                     </div>
