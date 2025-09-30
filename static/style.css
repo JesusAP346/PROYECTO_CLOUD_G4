@@ -1,39 +1,106 @@
-.node {
-    transition: all 0.2s ease;
+/* Estilos para el contenedor del SVG */
+.border-2.border-gray-200 {
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
 }
 
+.border-2.border-gray-200:active {
+    cursor: grabbing;
+}
+
+#network-svg {
+    transform-origin: 0 0;
+    transition: transform 0.1s ease;
+}
+
+/* Mejorar visibilidad de nodos y conexiones */
 .node:hover {
-    filter: brightness(1.1);
+    filter: brightness(1.2);
 }
 
 .edge-delete {
-    transition: opacity 0.2s ease;
+    transition: opacity 0.2s ease, r 0.2s ease;
 }
 
 .edge-delete:hover {
-    opacity: 0.8 !important;
+    r: 15;
+    opacity: 0.9 !important;
 }
 
-/* Estilos para el SVG */
+/* Controles de zoom */
+.zoom-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    background: white;
+    border-radius: 8px;
+    padding: 5px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    display: flex;
+    gap: 5px;
+}
+
+.zoom-btn {
+    width: 40px;
+    height: 40px;
+    border: 1px solid #e5e7eb;
+    background: white;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.zoom-btn:hover {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+}
+
+.zoom-reset {
+    width: auto;
+    padding: 0 12px;
+    font-size: 14px;
+}
+
+.svg-container {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Asegurar que el SVG ocupe todo el espacio disponible */
+#network-svg {
+    width: 100%;
+    height: 100%;
+    min-height: 500px;
+}
+
+/* Estados de los nodos durante interacción */
+.node[data-node-id].dragging {
+    cursor: grabbing;
+}
+
+/* Botones de control de vista */
+#fit-view-btn, #reset-view-btn {
+    transition: all 0.2s ease;
+}
+
+#fit-view-btn:hover, #reset-view-btn:hover {
+    transform: translateY(-1px);
+}
+
+/* Mejorar la visualización de texto en SVG */
 text {
-    font-family: system-ui, -apple-system, sans-serif;
+    user-select: none;
     pointer-events: none;
 }
 
-/* Scroll personalizado */
-::-webkit-scrollbar {
-    width: 6px;
-}
-
-::-webkit-scrollbar-track {
-    background: #f1f5f9;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+/* Asegurar que foreignObject se muestre correctamente */
+foreignObject {
+    overflow: visible;
 }

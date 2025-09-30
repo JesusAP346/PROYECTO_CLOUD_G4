@@ -9,6 +9,13 @@ let state = {
     dragOffset: { x: 0, y: 0 }
 };
 
+// Variables para zoom y pan
+let scale = 1;
+let translateX = 0;
+let translateY = 0;
+let isPanning = false;
+let startPanX, startPanY;
+
 // Elementos del DOM
 const elements = {
     topologySelect: document.getElementById('topology-select'),
@@ -37,13 +44,18 @@ const elements = {
 // Inicialización
 document.addEventListener('DOMContentLoaded', function() {
     // Inicializar íconos de Lucide
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
     
     // Cargar estado inicial del servidor
     loadTopologyState();
     
     // Configurar event listeners
     setupEventListeners();
+    
+    // Aplicar transformación inicial
+    applyZoom();
 });
 
 function setupEventListeners() {
@@ -68,12 +80,101 @@ function setupEventListeners() {
     elements.connectBtn.addEventListener('click', toggleConnectMode);
     elements.deleteNodeBtn.addEventListener('click', deleteSelectedNode);
     
+    // Controles de zoom
+    document.getElementById('zoom-in').addEventListener('click', zoomIn);
+    document.getElementById('zoom-out').addEventListener('click', zoomOut);
+    document.getElementById('zoom-reset').addEventListener('click', resetZoom);
+    
+    // Zoom con rueda del mouse
+    elements.svg.addEventListener('wheel', handleWheel, { passive: false });
+    
+    // Pan (arrastrar)
+    elements.svg.addEventListener('mousedown', startPan);
+    document.addEventListener('mousemove', doPan);
+    document.addEventListener('mouseup', stopPan);
+    
     // Eventos del SVG
     elements.svg.addEventListener('click', handleSvgClick);
     elements.svg.addEventListener('mousedown', handleMouseDown);
     elements.svg.addEventListener('mousemove', handleMouseMove);
     elements.svg.addEventListener('mouseup', handleMouseUp);
     elements.svg.addEventListener('mouseleave', handleMouseUp);
+}
+
+// Funciones de zoom y pan
+function zoomIn() {
+    if (scale < 3) {
+        scale += 0.1;
+        applyZoom();
+    }
+}
+
+function zoomOut() {
+    if (scale > 0.3) {
+        scale -= 0.1;
+        applyZoom();
+    }
+}
+
+function resetZoom() {
+    scale = 1;
+    translateX = 0;
+    translateY = 0;
+    applyZoom();
+}
+
+function applyZoom() {
+    elements.svg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+    document.getElementById('zoom-reset').textContent = `${Math.round(scale * 100)}%`;
+}
+
+function handleWheel(event) {
+    event.preventDefault();
+    
+    const rect = elements.svg.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+    
+    const zoomIntensity = 0.001;
+    const wheel = event.deltaY < 0 ? 1 : -1;
+    const zoom = Math.exp(wheel * zoomIntensity);
+    
+    // Calcular nueva escala
+    const newScale = scale * zoom;
+    
+    // Limitar zoom
+    if (newScale < 0.3 || newScale > 3) return;
+    
+    // Calcular desplazamiento para mantener el punto del mouse fijo
+    translateX -= (mouseX - translateX) * (zoom - 1);
+    translateY -= (mouseY - translateY) * (zoom - 1);
+    
+    scale = newScale;
+    applyZoom();
+}
+
+function startPan(event) {
+    // Solo iniciar pan si no se está haciendo clic en un nodo y no estamos en modo conexión
+    if (!event.target.classList.contains('node') && !state.connectMode) {
+        isPanning = true;
+        startPanX = event.clientX - translateX;
+        startPanY = event.clientY - translateY;
+        elements.svg.style.cursor = 'grabbing';
+        event.preventDefault();
+    }
+}
+
+function doPan(event) {
+    if (!isPanning) return;
+    
+    translateX = event.clientX - startPanX;
+    translateY = event.clientY - startPanY;
+    applyZoom();
+}
+
+function stopPan() {
+    isPanning = false;
+    elements.svg.style.cursor = 'grab';
 }
 
 function updateUI() {
@@ -204,18 +305,18 @@ async function deleteSelectedNode() {
     }
 }
 
-async function handleSvgClick(event) {
+function handleSvgClick(event) {
     if (event.target.classList.contains('node')) {
         const nodeId = parseInt(event.target.dataset.nodeId);
         handleNodeClick(nodeId, event);
     } else if (event.target.classList.contains('edge-delete')) {
         const fromId = parseInt(event.target.dataset.from);
         const toId = parseInt(event.target.dataset.to);
-        await deleteEdge(fromId, toId);
+        deleteEdge(fromId, toId);
     }
 }
 
-async function handleNodeClick(nodeId, event) {
+function handleNodeClick(nodeId, event) {
     event.stopPropagation();
     
     if (state.connectMode) {
@@ -224,7 +325,7 @@ async function handleNodeClick(nodeId, event) {
             updateConnectStep();
             drawTopology();
         } else if (state.connectFrom !== nodeId) {
-            await connectNodes(state.connectFrom, nodeId);
+            connectNodes(state.connectFrom, nodeId);
             state.connectFrom = null;
             state.connectMode = false;
             toggleConnectMode(); // Para actualizar UI
@@ -286,28 +387,31 @@ function handleMouseDown(event) {
     const node = state.nodes.find(n => n.id === nodeId);
     if (!node) return;
     
+    // Obtener las coordenadas del mouse ajustadas por el zoom y pan
     const rect = elements.svg.getBoundingClientRect();
-    const point = elements.svg.createSVGPoint();
-    point.x = event.clientX - rect.left;
-    point.y = event.clientY - rect.top;
+    const mouseX = (event.clientX - rect.left - translateX) / scale;
+    const mouseY = (event.clientY - rect.top - translateY) / scale;
     
     state.draggingNode = nodeId;
     state.dragOffset = {
-        x: point.x - node.x,
-        y: point.y - node.y
+        x: mouseX - node.x,
+        y: mouseY - node.y
     };
+    
+    // Prevenir que se active el pan cuando se arrastra un nodo
+    event.stopPropagation();
 }
 
-async function handleMouseMove(event) {
+function handleMouseMove(event) {
     if (!state.draggingNode) return;
     
+    // Obtener las coordenadas del mouse ajustadas por el zoom y pan
     const rect = elements.svg.getBoundingClientRect();
-    const point = elements.svg.createSVGPoint();
-    point.x = event.clientX - rect.left;
-    point.y = event.clientY - rect.top;
+    const mouseX = (event.clientX - rect.left - translateX) / scale;
+    const mouseY = (event.clientY - rect.top - translateY) / scale;
     
-    const newX = point.x - state.dragOffset.x;
-    const newY = point.y - state.dragOffset.y;
+    const newX = mouseX - state.dragOffset.x;
+    const newY = mouseY - state.dragOffset.y;
     
     // Actualizar posición localmente para respuesta inmediata
     const node = state.nodes.find(n => n.id === state.draggingNode);
@@ -346,6 +450,9 @@ async function handleMouseUp() {
 function drawTopology() {
     // Limpiar SVG
     elements.svg.innerHTML = '';
+    
+    // Aplicar la transformación de zoom y pan al SVG
+    elements.svg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
     
     // Dibujar conexiones
     state.edges.forEach(edge => {
@@ -408,7 +515,7 @@ function drawTopology() {
         circle.setAttribute('stroke-width', '3');
         circle.classList.add('node');
         circle.dataset.nodeId = node.id;
-        circle.style.cursor = isDragging ? 'grabbing' : 'grab';
+        circle.style.cursor = 'pointer';
         elements.svg.appendChild(circle);
         
         // Texto de la VM (usando foreignObject para HTML)
@@ -454,7 +561,9 @@ function drawTopology() {
     }
     
     // Re-inicializar íconos de Lucide
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
 async function loadTopologyState() {

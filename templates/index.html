@@ -77,6 +77,11 @@
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                         Eliminar VM-<span id="selected-node-id"></span>
                     </button>
+
+                    <button id="clear-btn" class="w-full py-2 bg-gray-600 text-white rounded hover:bg-gray-700 mb-2 flex items-center justify-center gap-2 transition-colors">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        Limpiar Todo
+                    </button>
                 </div>
 
                 <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
@@ -107,7 +112,14 @@
                         </span>
                     </div>
                     
-                    <div class="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                    <div class="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 svg-container">
+                        <!-- Controles de zoom -->
+                        <div class="zoom-controls">
+                            <button id="zoom-in" class="zoom-btn" title="Acercar">+</button>
+                            <button id="zoom-out" class="zoom-btn" title="Alejar">−</button>
+                            <button id="zoom-reset" class="zoom-btn zoom-reset" title="Resetear zoom">100%</button>
+                        </div>
+                        
                         <svg id="network-svg" width="800" height="600" class="w-full bg-gray-50">
                             <!-- Las conexiones y nodos se dibujarán aquí -->
                         </svg>
