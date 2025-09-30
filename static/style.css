@@ -1,0 +1,39 @@
+.node {
+    transition: all 0.2s ease;
+}
+
+.node:hover {
+    filter: brightness(1.1);
+}
+
+.edge-delete {
+    transition: opacity 0.2s ease;
+}
+
+.edge-delete:hover {
+    opacity: 0.8 !important;
+}
+
+/* Estilos para el SVG */
+text {
+    font-family: system-ui, -apple-system, sans-serif;
+    pointer-events: none;
+}
+
+/* Scroll personalizado */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}

@@ -15,22 +15,6 @@
     {
       "id": "Ani_1_D",
       "label": "Ani_1_D"
-    },
-    {
-      "id": "Mal_2_A",
-      "label": "Mal_2_A"
-    },
-    {
-      "id": "Mal_2_B",
-      "label": "Mal_2_B"
-    },
-    {
-      "id": "Mal_2_C",
-      "label": "Mal_2_C"
-    },
-    {
-      "id": "Mal_2_D",
-      "label": "Mal_2_D"
     }
   ],
   "edges": [
@@ -49,38 +33,6 @@
     {
       "from": "Ani_1_D",
       "to": "Ani_1_A"
-    },
-    {
-      "from": "Mal_2_A",
-      "to": "Mal_2_B"
-    },
-    {
-      "from": "Mal_2_A",
-      "to": "Mal_2_C"
-    },
-    {
-      "from": "Mal_2_A",
-      "to": "Mal_2_D"
-    },
-    {
-      "from": "Mal_2_B",
-      "to": "Mal_2_C"
-    },
-    {
-      "from": "Mal_2_B",
-      "to": "Mal_2_D"
-    },
-    {
-      "from": "Mal_2_C",
-      "to": "Mal_2_D"
-    },
-    {
-      "from": "Ani_1_B",
-      "to": "Mal_2_C"
-    },
-    {
-      "from": "Ani_1_A",
-      "to": "Mal_2_D"
     }
   ]
 }
