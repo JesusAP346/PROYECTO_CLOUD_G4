@@ -201,10 +201,22 @@ class NetworkTopology:
                 node['y'] = y
                 break
     
-    def get_state(self):
-        """Retorna el estado actual de la topología"""
+    def get_state(self, include_coords: bool = True):
+        clean_nodes = []
+        if include_coords:
+            # Devolver todo tal cual
+            clean_nodes = [
+                {'id': n['id'], 'label': n['label'], 'x': n['x'], 'y': n['y']}
+                for n in self.nodes
+            ]
+        else:
+            # Solo devolver id y label
+            clean_nodes = [
+                {'id': n['id'], 'label': n['label']}
+                for n in self.nodes
+            ]
         return {
-            'nodes': self.nodes,
+            'nodes': clean_nodes,
             'edges': self.edges
         }
 
@@ -309,16 +321,19 @@ def get_topology_state():
 
 @app.route('/api/topology/export', methods=['GET'])
 def export_topology():
+    export_format = (request.args.get('format') or '').lower()
+    include_coords = (export_format != 'deploy')  # si piden deploy, ocultamos x,y
+
     export_data = {
         'metadata': {
             'export_date': datetime.now().isoformat(),
             'version': '1.0',
             'total_nodes': len(topology.nodes),
-            'total_connections': len(topology.edges)
+            'total_connections': len(topology.edges),
+            'sentinel': 'deploy-no-coords'  # <--- marca
         },
-        'topology': topology.get_state()
+        'topology': topology.get_state(include_coords=False)
     }
-    
     return jsonify(export_data)
 
 if __name__ == '__main__':

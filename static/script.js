@@ -262,51 +262,30 @@ function stopPan() {
     elements.svgContainer.style.cursor = 'grab';
 }
 
-// FUNCIÓN: Exportar topología a JSON
-function exportTopology() {
-    if (state.nodes.length === 0) {
-        showNotification('No hay topología para exportar. Genera o crea una topología primero.', 'info');
-        return;
-    }
-    
-    // Crear objeto de topología
-    const topologyData = {
-        metadata: {
-            exportDate: new Date().toISOString(),
-            version: '1.0',
-            totalNodes: state.nodes.length,
-            totalConnections: state.edges.length
-        },
-        topology: {
-            nodes: state.nodes,
-            edges: state.edges
-        }
-    };
-    
-    // Convertir a JSON con formato legible
-    const jsonData = JSON.stringify(topologyData, null, 2);
-    
-    // Crear blob y enlace de descarga
-    const blob = new Blob([jsonData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    // Crear elemento de descarga
+// Exportar SIN coords desde el backend
+async function exportTopology() {
+  try {
+    const res = await fetch('/api/topology/export', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    a.href = url;
-    a.download = `topologia-red-${timestamp}.json`;
-    
-    // Trigger de descarga
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    a.href = URL.createObjectURL(blob);
+    a.download = `topologia-deploy-${ts}.json`;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    
-    // Liberar URL
-    URL.revokeObjectURL(url);
-    
-    // Mostrar mensaje de éxito
-    showNotification('Topología exportada exitosamente', 'success');
+    a.remove();
+    URL.revokeObjectURL(a.href);
+
+    showNotification('Topología exportada (deploy) desde backend', 'success');
+  } catch (e) {
+    console.error('Error exportando:', e);
+    showNotification('Error al exportar la topología', 'error');
+  }
 }
+
 
 // FUNCIÓN MEJORADA: Mostrar notificaciones
 function showNotification(message, type = 'info') {
