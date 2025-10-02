@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "export_date": "2025-10-02T12:45:34.345632",
+    "sentinel": "deploy-no-coords",
+    "total_connections": 6,
+    "total_nodes": 4,
+    "version": "1.0"
+  },
+  "topology": {
+    "edges": [
+      {
+        "from": 1,
+        "to": 2
+      },
+      {
+        "from": 1,
+        "to": 3
+      },
+      {
+        "from": 1,
+        "to": 4
+      },
+      {
+        "from": 2,
+        "to": 3
+      },
+      {
+        "from": 2,
+        "to": 4
+      },
+      {
+        "from": 3,
+        "to": 4
+      }
+    ],
+    "nodes": [
+      {
+        "id": 1,
+        "label": "VM-1"
+      },
+      {
+        "id": 2,
+        "label": "VM-2"
+      },
+      {
+        "id": 3,
+        "label": "VM-3"
+      },
+      {
+        "id": 4,
+        "label": "VM-4"
+      }
+    ]
+  }
+}

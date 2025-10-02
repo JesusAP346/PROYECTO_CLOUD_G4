@@ -1,0 +1,9 @@
+#desplegar
+python3 deploy_topology.py --json archivo.json
+#liberar vlans (no borra vms)
+python3 deploy_topology.py --release-slice <sliceID>
+#ver slices
+cat .orchestrator/vlans.json
+#ver mapeo vms 
+./mapeo_vms.sh
+
