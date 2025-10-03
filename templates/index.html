@@ -29,7 +29,6 @@
                         <option value="bus">Bus</option>
                         <option value="mesh">Malla</option>
                     </select>
-
                     <div id="tree-config" class="space-y-3">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -47,6 +46,38 @@
                             Total VMs: <span id="tree-total">7</span>
                         </p>
                     </div>
+
+                      <!-- AZ del Slice (una sola) -->
+                    <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                        <i data-lucide="map-pin" class="w-4 h-4"></i>
+                        Zona de disponibilidad (una sola)
+                    </label>
+
+                    <div class="space-y-2" id="az-radio-group">
+                        <label class="flex items-center gap-2">
+                        <input type="radio" name="slice-az" value="" checked>
+                        <span class="text-sm text-gray-700">Automático</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                        <input type="radio" name="slice-az" value="linux-AZ-1">
+                        <span class="text-sm text-gray-700">linux-AZ-1</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                        <input type="radio" name="slice-az" value="linux-AZ-2">
+                        <span class="text-sm text-gray-700">linux-AZ-2</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                        <input type="radio" name="slice-az" value="openstack-AZ-1">
+                        <span class="text-sm text-gray-700">openstack-AZ-1</span>
+                        </label>
+                    </div>
+
+                    <p class="text-xs text-gray-500 mt-2">
+                        Si eliges “Automático”, el orquestador decidirá la AZ al desplegar.
+                    </p>
+                    </div>
+
 
                     <div id="other-config" class="mb-3 hidden">
                         <label class="block text-sm font-medium text-gray-700 mb-2">

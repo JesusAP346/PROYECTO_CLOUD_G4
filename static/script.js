@@ -361,46 +361,53 @@ function updateTreeTotal() {
 }
 
 async function generateTopology() {
-    const topologyType = elements.topologySelect.value;
-    const config = {};
-    
-    if (topologyType === 'tree') {
-        config.tree_levels = parseInt(elements.treeLevels.value);
-        config.tree_branching = parseInt(elements.treeBranching.value);
-    } else if (topologyType !== 'point-to-point') {
-        config.node_count = parseInt(elements.nodeCount.value);
+  const topologyType = elements.topologySelect.value;
+  const config = {};
+
+  if (topologyType === 'tree') {
+    config.tree_levels = parseInt(elements.treeLevels.value);
+    config.tree_branching = parseInt(elements.treeBranching.value);
+  } else if (topologyType !== 'point-to-point') {
+    config.node_count = parseInt(elements.nodeCount.value);
+  }
+
+  // 1) Fijar AZ del slice
+  const placement = getSelectedAZSingle();
+  try {
+    await fetch('/api/placement/az', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(placement)
+    });
+  } catch (e) {
+    console.warn('No se pudo guardar placement AZ, continúo con automático:', e);
+  }
+
+  // (opcional) si implementaste el paso inline:
+  // config.placement = placement;
+
+  // 2) Generar topología
+  try {
+    const response = await fetch('/api/topology/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: topologyType, config })
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      state.nodes = data.topology.nodes;
+      state.edges = data.topology.edges;
+      drawTopology();
+      setTimeout(() => perfectCenterTopology(), 50);
+      showNotification(`Topología ${topologyType} generada`, 'success');
     }
-    
-    try {
-        const response = await fetch('/api/topology/generate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                type: topologyType,
-                config: config
-            })
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-            state.nodes = data.topology.nodes;
-            state.edges = data.topology.edges;
-            drawTopology();
-            
-            // Centrado PERFECTO y automático
-            setTimeout(() => {
-                perfectCenterTopology();
-            }, 50);
-            
-            showNotification(`Topología ${topologyType} generada exitosamente`, 'success');
-        }
-    } catch (error) {
-        console.error('Error generating topology:', error);
-        showNotification('Error al generar la topología', 'error');
-    }
+  } catch (error) {
+    console.error('Error generating topology:', error);
+    showNotification('Error al generar la topología', 'error');
+  }
 }
+
 
 function perfectCenterTopology() {
     if (state.nodes.length === 0) return;
@@ -879,6 +886,13 @@ async function loadTopologyState() {
         console.error('Error loading topology state:', error);
     }
 }
+function getSelectedAZSingle() {
+  const checked = document.querySelector('input[name="slice-az"]:checked');
+  const val = (checked && checked.value) || "";
+  // "" => automático -> az: null
+  return { az: val === "" ? null : val };
+}
+
 
 // Inicializar UI
 updateUI();

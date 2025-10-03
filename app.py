@@ -10,6 +10,7 @@ class NetworkTopology:
         self.nodes = []
         self.edges = []
         self.next_id = 1
+        self.slice_placement = {"az": None}
     
     def generate_topology(self, topology_type, config):
         """Genera una topología específica y la AGREGA a la existente"""
@@ -322,7 +323,7 @@ def get_topology_state():
 @app.route('/api/topology/export', methods=['GET'])
 def export_topology():
     export_format = (request.args.get('format') or '').lower()
-    include_coords = (export_format != 'deploy')  # si piden deploy, ocultamos x,y
+    include_coords = (export_format != 'deploy')
 
     export_data = {
         'metadata': {
@@ -330,11 +331,29 @@ def export_topology():
             'version': '1.0',
             'total_nodes': len(topology.nodes),
             'total_connections': len(topology.edges),
-            'sentinel': 'deploy-no-coords'  # <--- marca
+            #'sentinel': 'deploy-no-coords',
+            # AQUÍ: una sola AZ o null (auto)
+            'placement': {
+                'az': topology.slice_placement.get('az', None)
+            }
         },
-        'topology': topology.get_state(include_coords=False)
+        'topology': topology.get_state(include_coords=include_coords)
     }
     return jsonify(export_data)
+
+
+@app.route('/api/placement/az', methods=['POST'])
+def set_slice_placement():
+    data = request.json or {}
+    # data: { "az": "linux-AZ-1" }  ó  { "az": null }  (automático)
+    az = data.get('az', None)
+    # Validación suave (opcional)
+    allowed = {None, "linux-AZ-1", "linux-AZ-2", "openstack-AZ-1"}
+    if az not in allowed:
+        return jsonify({"success": False, "error": "AZ inválida"}), 400
+
+    topology.slice_placement = {"az": az}
+    return jsonify({"success": True, "placement": topology.slice_placement})
 
 if __name__ == '__main__':
     app.run(debug=True)
