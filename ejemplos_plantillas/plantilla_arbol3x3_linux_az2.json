@@ -1,0 +1,117 @@
+{
+  "metadata": {
+    "export_date": "2025-10-02T23:56:13.888240",
+    "placement": {
+      "az": "linux-AZ-2"
+    },
+    "total_connections": 12,
+    "total_nodes": 13,
+    "version": "1.0"
+  },
+  "topology": {
+    "edges": [
+      {
+        "from": 1,
+        "to": 2
+      },
+      {
+        "from": 1,
+        "to": 3
+      },
+      {
+        "from": 1,
+        "to": 4
+      },
+      {
+        "from": 2,
+        "to": 5
+      },
+      {
+        "from": 2,
+        "to": 6
+      },
+      {
+        "from": 2,
+        "to": 7
+      },
+      {
+        "from": 3,
+        "to": 8
+      },
+      {
+        "from": 3,
+        "to": 9
+      },
+      {
+        "from": 3,
+        "to": 10
+      },
+      {
+        "from": 4,
+        "to": 11
+      },
+      {
+        "from": 4,
+        "to": 12
+      },
+      {
+        "from": 4,
+        "to": 13
+      }
+    ],
+    "nodes": [
+      {
+        "id": 1,
+        "label": "VM-1"
+      },
+      {
+        "id": 2,
+        "label": "VM-2"
+      },
+      {
+        "id": 3,
+        "label": "VM-3"
+      },
+      {
+        "id": 4,
+        "label": "VM-4"
+      },
+      {
+        "id": 5,
+        "label": "VM-5"
+      },
+      {
+        "id": 6,
+        "label": "VM-6"
+      },
+      {
+        "id": 7,
+        "label": "VM-7"
+      },
+      {
+        "id": 8,
+        "label": "VM-8"
+      },
+      {
+        "id": 9,
+        "label": "VM-9"
+      },
+      {
+        "id": 10,
+        "label": "VM-10"
+      },
+      {
+        "id": 11,
+        "label": "VM-11"
+      },
+      {
+        "id": 12,
+        "label": "VM-12"
+      },
+      {
+        "id": 13,
+        "label": "VM-13"
+      }
+    ]
+  }
+}

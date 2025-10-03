@@ -157,12 +157,33 @@ def compute_vnc_counters_from_state(state):
     return vnc_counters
 
 
-def plan(nodes_sorted, vm_vlans, vnc_counters, slice_id):
+# ---------- NUEVO: selección de pool de workers según AZ ----------
+def select_workers_for_az(az: str):
+    """
+    Devuelve la lista de WORKERS para el despliegue según la AZ.
+      - "linux-AZ-1"  => solo worker1
+      - "linux-AZ-2"  => round-robin entre worker2 y worker3
+      - None (auto)   => round-robin entre todos los WORKERS
+    """
+    if az is None:
+        return WORKERS[:]
+    if az == "linux-AZ-1":
+        pool = [w for w in WORKERS if w["name"] == "worker1"]
+    elif az == "linux-AZ-2":
+        pool = [w for w in WORKERS if w["name"] in ("worker2", "worker3")]
+    else:
+        raise ValueError(f"AZ no soportada: {az}")
+    if not pool:
+        raise ValueError(f"No hay workers disponibles para AZ={az}")
+    return pool
+
+
+def plan(nodes_sorted, vm_vlans, vnc_counters, slice_id, worker_pool):
     actions = []
     w = 0
     for n in nodes_sorted:
-        wk = WORKERS[w % len(WORKERS)]
-        vm_name = f"vm{n['id']}-{slice_id[-6:]}"  # ahora sí existe slice_id
+        wk = worker_pool[w % len(worker_pool)]
+        vm_name = f"vm{n['id']}-{slice_id[-6:]}"
         vlans = sorted(vm_vlans.get(n["id"], []))
 
         vnc_port = vnc_counters[wk["host"]]
@@ -276,7 +297,16 @@ def main():
 
     with open(args.json, "r", encoding="utf-8") as f:
         data = json.load(f)
+
+    # Topología (soporta {metadata, topology} o solo topology)
     topo = data.get("topology", data)
+
+    # ---- Leer placement.az desde metadata (si existe) ----
+    placement_az = None
+    meta = data.get("metadata") or {}
+    placement = meta.get("placement") or {}
+    if isinstance(placement, dict):
+        placement_az = placement.get("az")  # None (auto) | "linux-AZ-1" | "linux-AZ-2"
 
     # Parse y asignación de VLAN por edge con estado persistente
     nodes_sorted, vm_vlans, edge_vlan_map, new_used = parse_topology(topo, state)
@@ -284,12 +314,21 @@ def main():
     # VNC por worker considerando lo ya usado en slices previos
     vnc_counters = compute_vnc_counters_from_state(state)
 
-    # Planificación (round-robin simple entre workers)
-    slice_id = args.slice_id or default_slice_id_from_path(args.json)
-    actions = plan(nodes_sorted, vm_vlans, vnc_counters, slice_id)
+    # Seleccionar pool de workers según AZ
+    try:
+        worker_pool = select_workers_for_az(placement_az)
+    except ValueError as e:
+        raise SystemExit(f"[ERROR] {e}")
 
+    # Planificación usando el pool elegido
+    slice_id = args.slice_id or default_slice_id_from_path(args.json)
+    actions = plan(nodes_sorted, vm_vlans, vnc_counters, slice_id, worker_pool)
 
     # Mostrar plan
+    chosen_az = placement_az if placement_az is not None else "auto"
+    pool_names = ", ".join([w["name"] for w in worker_pool])
+    print(f"\n[INFO] placement.az = {chosen_az} -> worker_pool = [{pool_names}]")
+
     print("\n[INFO] VLAN por enlace:")
     for (a, b), vlan in sorted(edge_vlan_map.items()):
         print(f"  {a} -- {b}  vlan={vlan}")
