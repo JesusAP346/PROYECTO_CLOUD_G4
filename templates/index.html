@@ -119,6 +119,26 @@
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                         Limpiar Todo
                     </button>
+
+                    <button id="btnGuardar" class="w-full py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 mb-2 flex items-center justify-center gap-2 transition-colors">💾 Guardar plantilla</button>
+                        <script>
+                        document.getElementById('btnGuardar').addEventListener('click', async () => {
+                        const nombre = prompt("Nombre de la plantilla:", "mi_plantilla") || "mi_plantilla";
+                        try {
+                            const res = await fetch('/api/topology/save', {
+                            method: 'POST',
+                            headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({ name: nombre, format: 'full' }) // o 'deploy'
+                            });
+                            if (!res.ok) throw new Error('Error al guardar');
+                            const data = await res.json();
+                            alert(`Guardado ✅\nArchivo: ${data.filename}\nRuta: ${data.file}`);
+                        } catch (e) {
+                            alert('❌ No se pudo guardar: ' + e.message);
+                        }
+                        });
+                        </script>
+
                 </div>
 
                 <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
