@@ -1,7 +1,9 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file
 import math
 import json
 from datetime import datetime
+import os
+import tempfile
 
 app = Flask(__name__)
 
@@ -10,63 +12,95 @@ class NetworkTopology:
         self.nodes = []
         self.edges = []
         self.next_id = 1
-        self.slice_placement = {"az": None}
+        self.topology_count = 0
+        self.placement_az = None
     
-    def generate_topology(self, topology_type, config):
+    def generate_topology(self, topology_type, config, flavor=None):
         """Genera una topología específica y la AGREGA a la existente"""
-        # Centro del área visible - usar coordenadas más centrales
-        center_x = 5000
-        center_y = 5000
-        # Radio MUY REDUCIDO para máxima compactación
-        base_radius = 200
+        if flavor is None:
+            flavor = {'vcpus': 2, 'ram': 2, 'disk': 20}
+            
+        self.topology_count += 1
         
-        # NO reiniciamos nodes y edges, los mantenemos
+        grid_size = 3
+        col = (self.topology_count - 1) % grid_size
+        row = (self.topology_count - 1) // grid_size
+        
+        spacing_x = 250
+        spacing_y = 200
+        
+        base_x = 200 + col * spacing_x
+        base_y = 150 + row * spacing_y
+        
         new_nodes = []
         new_edges = []
         
-        # Calcular el siguiente ID disponible
-        next_id = max([node['id'] for node in self.nodes], default=0) + 1
+        if self.nodes:
+            next_id = max([node['id'] for node in self.nodes]) + 1
+        else:
+            next_id = 1
         
         if topology_type == "point-to-point":
-            # Solo 100px de separación
             new_nodes = [
-                {'id': next_id, 'x': center_x - 50, 'y': center_y, 'label': f'VM-{next_id}'},
-                {'id': next_id + 1, 'x': center_x + 50, 'y': center_y, 'label': f'VM-{next_id + 1}'}
+                {
+                    'id': next_id, 
+                    'x': base_x - 50, 
+                    'y': base_y, 
+                    'label': f'VM-{next_id}',
+                    'flavor': flavor.copy(),
+                    'az': self.placement_az
+                },
+                {
+                    'id': next_id + 1, 
+                    'x': base_x + 50, 
+                    'y': base_y, 
+                    'label': f'VM-{next_id + 1}',
+                    'flavor': flavor.copy(),
+                    'az': self.placement_az
+                }
             ]
             new_edges = [{'from': next_id, 'to': next_id + 1}]
             
         elif topology_type == "star":
+            radius = 80
             central_id = next_id
-            new_nodes = [{'id': central_id, 'x': center_x, 'y': center_y, 'label': f'VM-{central_id}'}]
+            new_nodes = [{
+                'id': central_id, 
+                'x': base_x, 
+                'y': base_y, 
+                'label': f'VM-{central_id}',
+                'flavor': flavor.copy(),
+                'az': self.placement_az
+            }]
             
             node_count = config.get('node_count', 5)
-            # Radio muy pequeño para nodos periféricos
-            star_radius = base_radius * 0.8
             for i in range(node_count - 1):
                 angle = (i * 2 * math.pi) / (node_count - 1)
                 new_id = next_id + i + 1
                 new_nodes.append({
                     'id': new_id,
-                    'x': center_x + star_radius * math.cos(angle),
-                    'y': center_y + star_radius * math.sin(angle),
-                    'label': f'VM-{new_id}'
+                    'x': base_x + radius * math.cos(angle),
+                    'y': base_y + radius * math.sin(angle),
+                    'label': f'VM-{new_id}',
+                    'flavor': flavor.copy(),
+                    'az': self.placement_az
                 })
                 new_edges.append({'from': central_id, 'to': new_id})
-                
+            
         elif topology_type == "ring":
             node_count = config.get('node_count', 5)
-            # Radio muy compacto
-            ring_radius = base_radius * 0.6
+            radius = 70
             for i in range(node_count):
                 angle = (i * 2 * math.pi) / node_count
                 new_id = next_id + i
                 new_nodes.append({
                     'id': new_id,
-                    'x': center_x + ring_radius * math.cos(angle),
-                    'y': center_y + ring_radius * math.sin(angle),
-                    'label': f'VM-{new_id}'
+                    'x': base_x + radius * math.cos(angle),
+                    'y': base_y + radius * math.sin(angle),
+                    'label': f'VM-{new_id}',
+                    'flavor': flavor.copy(),
+                    'az': self.placement_az
                 })
-                # Conectar en anillo
                 if i < node_count - 1:
                     new_edges.append({'from': new_id, 'to': new_id + 1})
                 else:
@@ -76,29 +110,38 @@ class NetworkTopology:
             levels = config.get('tree_levels', 3)
             branching = config.get('tree_branching', 2)
             
-            # Nodo raíz en el centro
             root_id = next_id
-            new_nodes.append({'id': root_id, 'x': center_x, 'y': center_y, 'label': f'VM-{root_id}'})
-            current_level = [{'id': root_id, 'x': center_x, 'y': center_y}]
+            new_nodes.append({
+                'id': root_id, 
+                'x': base_x, 
+                'y': base_y, 
+                'label': f'VM-{root_id}',
+                'flavor': flavor.copy(),
+                'az': self.placement_az
+            })
+            current_level = [{'id': root_id, 'x': base_x, 'y': base_y}]
             current_id = next_id + 1
             
             for level in range(1, levels):
                 next_level = []
                 nodes_in_level = len(current_level) * branching
-                # Espaciado MUY COMPACTO
-                level_width = 400  # Ancho fijo muy reducido
-                spacing = level_width / max(1, nodes_in_level)
-                y = center_y + level * 120  # Espaciado vertical mínimo
+                spacing = min(200, 300 / max(1, nodes_in_level))
+                y = base_y + level * 80
                 
                 for parent_idx, parent in enumerate(current_level):
                     for i in range(branching):
                         child_idx = parent_idx * branching + i
-                        x = center_x - (level_width / 2) + spacing * (child_idx + 0.5)
+                        total_width = (nodes_in_level - 1) * spacing
+                        start_x = base_x - total_width / 2
+                        x = start_x + child_idx * spacing
+                        
                         new_nodes.append({
                             'id': current_id,
                             'x': x,
                             'y': y,
-                            'label': f'VM-{current_id}'
+                            'label': f'VM-{current_id}',
+                            'flavor': flavor.copy(),
+                            'az': self.placement_az
                         })
                         new_edges.append({'from': parent['id'], 'to': current_id})
                         next_level.append({'id': current_id, 'x': x, 'y': y})
@@ -108,61 +151,59 @@ class NetworkTopology:
                 
         elif topology_type == "bus":
             node_count = config.get('node_count', 5)
-            # Bus muy compacto
-            bus_width = 300
-            bus_spacing = bus_width / (node_count + 1)
+            bus_spacing = 120 / max(1, node_count - 1)
             
             for i in range(node_count):
                 new_id = next_id + i
                 new_nodes.append({
                     'id': new_id,
-                    'x': center_x - (bus_width / 2) + bus_spacing * (i + 1),
-                    'y': center_y,
-                    'label': f'VM-{new_id}'
+                    'x': base_x - 60 + bus_spacing * i,
+                    'y': base_y,
+                    'label': f'VM-{new_id}',
+                    'flavor': flavor.copy(),
+                    'az': self.placement_az
                 })
                 if i > 0:
                     new_edges.append({'from': new_id - 1, 'to': new_id})
                     
         elif topology_type == "mesh":
             node_count = config.get('node_count', 5)
-            # Malla muy compacta
-            mesh_radius = base_radius * 0.5
+            mesh_radius = 60
             
-            # Crear nodos
             for i in range(node_count):
                 angle = (i * 2 * math.pi) / node_count
                 new_id = next_id + i
                 new_nodes.append({
                     'id': new_id,
-                    'x': center_x + mesh_radius * math.cos(angle),
-                    'y': center_y + mesh_radius * math.sin(angle),
-                    'label': f'VM-{new_id}'
+                    'x': base_x + mesh_radius * math.cos(angle),
+                    'y': base_y + mesh_radius * math.sin(angle),
+                    'label': f'VM-{new_id}',
+                    'flavor': flavor.copy(),
+                    'az': self.placement_az
                 })
             
-            # Crear conexiones de malla completa
             for i in range(node_count):
                 for j in range(i + 1, node_count):
                     new_edges.append({'from': next_id + i, 'to': next_id + j})
         
-        # AGREGAR nuevos nodos y edges a los existentes (no reemplazar)
         self.nodes.extend(new_nodes)
         self.edges.extend(new_edges)
         
-        # Actualizar next_id para futuras adiciones
-        if new_nodes:
+        if self.nodes:
             self.next_id = max(node['id'] for node in self.nodes) + 1
     
-    def add_node(self, x, y):
-        """Agrega un nuevo nodo en la posición especificada"""
-        if x is None or y is None:
-            x = 5000
-            y = 5000
-            
+    def add_node(self, x, y, flavor=None):
+        """Agrega un nuevo nodo en la posición especificada con flavor"""
+        if flavor is None:
+            flavor = {'vcpus': 2, 'ram': 2, 'disk': 20}
+        
         new_node = {
             'id': self.next_id,
             'x': x,
             'y': y,
-            'label': f'VM-{self.next_id}'
+            'label': f'VM-{self.next_id}',
+            'flavor': flavor.copy(),
+            'az': self.placement_az
         }
         self.nodes.append(new_node)
         self.next_id += 1
@@ -202,24 +243,49 @@ class NetworkTopology:
                 node['y'] = y
                 break
     
-    def get_state(self, include_coords: bool = True):
-        clean_nodes = []
-        if include_coords:
-            # Devolver todo tal cual
-            clean_nodes = [
-                {'id': n['id'], 'label': n['label'], 'x': n['x'], 'y': n['y']}
-                for n in self.nodes
-            ]
-        else:
-            # Solo devolver id y label
-            clean_nodes = [
-                {'id': n['id'], 'label': n['label']}
-                for n in self.nodes
-            ]
+    def update_node_flavor(self, node_id, flavor):
+        """Actualiza el flavor de un nodo específico"""
+        for node in self.nodes:
+            if node['id'] == node_id:
+                node['flavor'] = flavor.copy()
+                break
+    
+    def set_placement_az(self, az):
+        """Establece la zona de disponibilidad para nuevos nodos"""
+        self.placement_az = az
+    
+    def get_state(self):
+        """Retorna el estado actual de la topología"""
         return {
-            'nodes': clean_nodes,
+            'nodes': self.nodes,
             'edges': self.edges
         }
+    
+    def load_from_template(self, template_data):
+        """Carga una topología desde datos de plantilla"""
+        try:
+            self.nodes = []
+            self.edges = []
+            
+            topology_data = template_data.get('topology', {})
+            self.nodes = topology_data.get('nodes', [])
+            self.edges = topology_data.get('edges', [])
+            
+            if self.nodes:
+                self.next_id = max(node['id'] for node in self.nodes) + 1
+            else:
+                self.next_id = 1
+            
+            self.topology_count = 0
+            
+            az = template_data.get('availability_zone')
+            if az:
+                self.placement_az = az
+                
+            return True
+        except Exception as e:
+            print(f"Error loading template: {e}")
+            return False
 
 # Instancia global de la topología
 topology = NetworkTopology()
@@ -228,132 +294,254 @@ topology = NetworkTopology()
 def index():
     return render_template('index.html')
 
-# API Endpoints (mantener igual que antes)
+# API Endpoints
 @app.route('/api/topology/generate', methods=['POST'])
 def generate_topology():
-    data = request.json
-    topology_type = data.get('type', 'tree')
-    config = data.get('config', {})
-    
-    topology.generate_topology(topology_type, config)
-    
-    return jsonify({
-        'success': True,
-        'topology': topology.get_state()
-    })
+    try:
+        data = request.json
+        topology_type = data.get('type', 'tree')
+        config = data.get('config', {})
+        flavor = data.get('flavor', None)
+        
+        topology.generate_topology(topology_type, config, flavor)
+        
+        return jsonify({
+            'success': True,
+            'topology': topology.get_state()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/placement/az', methods=['POST'])
+def set_placement_az():
+    try:
+        data = request.json
+        az = data.get('az')
+        
+        topology.set_placement_az(az)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Zona de disponibilidad establecida: {az}'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/api/topology/clear', methods=['POST'])
 def clear_topology():
-    topology.nodes = []
-    topology.edges = []
-    topology.next_id = 1
-    
-    return jsonify({
-        'success': True,
-        'topology': topology.get_state()
-    })
+    try:
+        topology.nodes = []
+        topology.edges = []
+        topology.next_id = 1
+        topology.topology_count = 0
+        topology.placement_az = None
+        
+        return jsonify({
+            'success': True,
+            'topology': topology.get_state()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/topology/save', methods=['POST'])
+def save_topology():
+    try:
+        data = request.json
+        name = data.get('name', 'topology')
+        format_type = data.get('format', 'full')
+        flavor = data.get('flavor', {})
+        az = data.get('az', '')
+        
+        template_data = {
+            'metadata': {
+                'name': name,
+                'created_at': datetime.now().isoformat(),
+                'format': format_type
+            },
+            'flavor_defaults': flavor,
+            'availability_zone': az,
+            'topology': {
+                'nodes': topology.nodes,
+                'edges': topology.edges
+            }
+        }
+        
+        filename = f"{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        filepath = f"./templates/{filename}"
+        
+        os.makedirs('./templates', exist_ok=True)
+        
+        with open(filepath, 'w') as f:
+            json.dump(template_data, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'file': filepath
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/topology/load', methods=['POST'])
+def load_topology():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'})
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+        
+        if file and file.filename.endswith('.json'):
+            template_data = json.load(file)
+            success = topology.load_from_template(template_data)
+            
+            if success:
+                return jsonify({
+                    'success': True,
+                    'topology': topology.get_state()
+                })
+            else:
+                return jsonify({'success': False, 'error': 'Error processing template'})
+        
+        return jsonify({'success': False, 'error': 'Invalid file format'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/nodes', methods=['POST'])
 def add_node():
-    data = request.json
-    x = data.get('x', 5000)
-    y = data.get('y', 5000)
-    
-    new_node = topology.add_node(x, y)
-    
-    return jsonify({
-        'success': True,
-        'node': new_node,
-        'topology': topology.get_state()
-    })
+    try:
+        data = request.json
+        x = data.get('x', 400)
+        y = data.get('y', 300)
+        flavor = data.get('flavor', None)
+        
+        new_node = topology.add_node(x, y, flavor)
+        
+        return jsonify({
+            'success': True,
+            'node': new_node,
+            'topology': topology.get_state()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/api/nodes/<int:node_id>', methods=['DELETE'])
 def delete_node(node_id):
-    topology.delete_node(node_id)
-    
-    return jsonify({
-        'success': True,
-        'topology': topology.get_state()
-    })
+    try:
+        topology.delete_node(node_id)
+        
+        return jsonify({
+            'success': True,
+            'topology': topology.get_state()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/api/nodes/<int:node_id>/move', methods=['PUT'])
 def move_node(node_id):
-    data = request.json
-    x = data.get('x')
-    y = data.get('y')
-    
-    if x is not None and y is not None:
-        topology.move_node(node_id, x, y)
-    
-    return jsonify({
-        'success': True,
-        'topology': topology.get_state()
-    })
+    try:
+        data = request.json
+        x = data.get('x')
+        y = data.get('y')
+        
+        if x is not None and y is not None:
+            topology.move_node(node_id, x, y)
+        
+        return jsonify({
+            'success': True,
+            'topology': topology.get_state()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/nodes/<int:node_id>/flavor', methods=['PUT'])
+def update_node_flavor(node_id):
+    try:
+        data = request.json
+        flavor = data.get('flavor')
+        
+        if flavor:
+            topology.update_node_flavor(node_id, flavor)
+            
+            return jsonify({
+                'success': True,
+                'topology': topology.get_state()
+            })
+        
+        return jsonify({
+            'success': False,
+            'error': 'No flavor provided'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/api/edges', methods=['POST'])
 def add_edge():
-    data = request.json
-    from_id = data.get('from')
-    to_id = data.get('to')
-    
-    success = topology.connect_nodes(from_id, to_id)
-    
-    return jsonify({
-        'success': success,
-        'topology': topology.get_state()
-    })
+    try:
+        data = request.json
+        from_id = data.get('from')
+        to_id = data.get('to')
+        
+        success = topology.connect_nodes(from_id, to_id)
+        
+        return jsonify({
+            'success': success,
+            'topology': topology.get_state()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/api/edges/delete', methods=['POST'])
 def delete_edge():
-    data = request.json
-    from_id = data.get('from')
-    to_id = data.get('to')
-    
-    topology.delete_edge(from_id, to_id)
-    
-    return jsonify({
-        'success': True,
-        'topology': topology.get_state()
-    })
+    try:
+        data = request.json
+        from_id = data.get('from')
+        to_id = data.get('to')
+        
+        topology.delete_edge(from_id, to_id)
+        
+        return jsonify({
+            'success': True,
+            'topology': topology.get_state()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/api/topology/state', methods=['GET'])
 def get_topology_state():
     return jsonify(topology.get_state())
 
-@app.route('/api/topology/export', methods=['GET'])
-def export_topology():
-    export_format = (request.args.get('format') or '').lower()
-    include_coords = (export_format != 'deploy')
-
-    export_data = {
-        'metadata': {
-            'export_date': datetime.now().isoformat(),
-            'version': '1.0',
-            'total_nodes': len(topology.nodes),
-            'total_connections': len(topology.edges),
-            #'sentinel': 'deploy-no-coords',
-            # AQUÍ: una sola AZ o null (auto)
-            'placement': {
-                'az': topology.slice_placement.get('az', None)
-            }
-        },
-        'topology': topology.get_state(include_coords=include_coords)
-    }
-    return jsonify(export_data)
-
-
-@app.route('/api/placement/az', methods=['POST'])
-def set_slice_placement():
-    data = request.json or {}
-    # data: { "az": "linux-AZ-1" }  ó  { "az": null }  (automático)
-    az = data.get('az', None)
-    # Validación suave (opcional)
-    allowed = {None, "linux-AZ-1", "linux-AZ-2", "openstack-AZ-1"}
-    if az not in allowed:
-        return jsonify({"success": False, "error": "AZ inválida"}), 400
-
-    topology.slice_placement = {"az": az}
-    return jsonify({"success": True, "placement": topology.slice_placement})
-
 if __name__ == '__main__':
+    os.makedirs('./templates', exist_ok=True)
     app.run(debug=True)

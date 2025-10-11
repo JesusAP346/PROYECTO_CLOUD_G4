@@ -19,7 +19,7 @@
                 <div class="bg-white rounded-lg shadow-lg p-4">
                     <h3 class="font-bold text-lg mb-3 flex items-center gap-2">
                         <i data-lucide="settings" class="w-5 h-5"></i>
-                        Configuración
+                        Configuración de Topología
                     </h3>
                     <select id="topology-select" class="w-full p-2 border border-gray-300 rounded mb-3">
                         <option value="point-to-point">Punto a Punto</option>
@@ -29,6 +29,7 @@
                         <option value="bus">Bus</option>
                         <option value="mesh">Malla</option>
                     </select>
+
                     <div id="tree-config" class="space-y-3">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -47,37 +48,32 @@
                         </p>
                     </div>
 
-                      <!-- AZ del Slice (una sola) -->
+                    <!-- AZ del Slice (una sola) -->
                     <div class="mt-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <i data-lucide="map-pin" class="w-4 h-4"></i>
-                        Zona de disponibilidad (una sola)
-                    </label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                            <i data-lucide="map-pin" class="w-4 h-4"></i>
+                            Zona de disponibilidad
+                        </label>
 
-                    <div class="space-y-2" id="az-radio-group">
-                        <label class="flex items-center gap-2">
-                        <input type="radio" name="slice-az" value="" checked>
-                        <span class="text-sm text-gray-700">Automático</span>
-                        </label>
-                        <label class="flex items-center gap-2">
-                        <input type="radio" name="slice-az" value="linux-AZ-1">
-                        <span class="text-sm text-gray-700">linux-AZ-1</span>
-                        </label>
-                        <label class="flex items-center gap-2">
-                        <input type="radio" name="slice-az" value="linux-AZ-2">
-                        <span class="text-sm text-gray-700">linux-AZ-2</span>
-                        </label>
-                        <label class="flex items-center gap-2">
-                        <input type="radio" name="slice-az" value="openstack-AZ-1">
-                        <span class="text-sm text-gray-700">openstack-AZ-1</span>
-                        </label>
+                        <div class="space-y-2" id="az-radio-group">
+                            <label class="flex items-center gap-2">
+                                <input type="radio" name="slice-az" value="" checked>
+                                <span class="text-sm text-gray-700">Automático</span>
+                            </label>
+                            <label class="flex items-center gap-2">
+                                <input type="radio" name="slice-az" value="linux-AZ-1">
+                                <span class="text-sm text-gray-700">linux-AZ-1</span>
+                            </label>
+                            <label class="flex items-center gap-2">
+                                <input type="radio" name="slice-az" value="linux-AZ-2">
+                                <span class="text-sm text-gray-700">linux-AZ-2</span>
+                            </label>
+                            <label class="flex items-center gap-2">
+                                <input type="radio" name="slice-az" value="openstack-AZ-1">
+                                <span class="text-sm text-gray-700">openstack-AZ-1</span>
+                            </label>
+                        </div>
                     </div>
-
-                    <p class="text-xs text-gray-500 mt-2">
-                        Si eliges “Automático”, el orquestador decidirá la AZ al desplegar.
-                    </p>
-                    </div>
-
 
                     <div id="other-config" class="mb-3 hidden">
                         <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -92,7 +88,14 @@
                 </div>
 
                 <div class="bg-white rounded-lg shadow-lg p-4">
-                    <h3 class="font-bold text-lg mb-3">Acciones</h3>
+                    <h3 class="font-bold text-lg mb-3">Acciones Globales</h3>
+
+                    <div class="mb-4 flex gap-2">
+                        <button id="load-json" class="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700">
+                            Cargar JSON
+                        </button>
+                        <input type="file" id="file-input" accept=".json" class="hidden">
+                    </div>
                     
                     <button id="add-node-btn" class="w-full py-2 bg-green-600 text-white rounded hover:bg-green-700 mb-2 flex items-center justify-center gap-2 transition-colors">
                         <i data-lucide="plus" class="w-4 h-4"></i>
@@ -104,55 +107,91 @@
                         Conectar VMs
                     </button>
 
-                    <!-- NUEVO BOTÓN DE EXPORTACIÓN -->
-                    <button id="export-btn" class="w-full py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 mb-2 flex items-center justify-center gap-2 transition-colors">
-                        <i data-lucide="download" class="w-4 h-4"></i>
-                        Exportar JSON
-                    </button>
-
-                    <button id="delete-node-btn" class="w-full py-2 bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center gap-2 transition-colors hidden">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        Eliminar VM-<span id="selected-node-id"></span>
-                    </button>
+                    <!-- Exportar como imagen -->
+                    <div class="mb-2 flex gap-2">
+                        <button id="export-svg-btn" class="flex-1 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors">
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                            Exportar SVG
+                        </button>
+                        <button id="export-png-btn" class="flex-1 py-2 bg-indigo-700 text-white rounded hover:bg-indigo-800 flex items-center justify-center gap-2 transition-colors">
+                            <i data-lucide="image" class="w-4 h-4"></i>
+                            Exportar PNG
+                        </button>
+                    </div>
 
                     <button id="clear-btn" class="w-full py-2 bg-gray-600 text-white rounded hover:bg-gray-700 mb-2 flex items-center justify-center gap-2 transition-colors">
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                         Limpiar Todo
                     </button>
 
-                    <button id="btnGuardar" class="w-full py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 mb-2 flex items-center justify-center gap-2 transition-colors">💾 Guardar plantilla</button>
-                        <script>
-                        document.getElementById('btnGuardar').addEventListener('click', async () => {
-                        const nombre = prompt("Nombre de la plantilla:", "mi_plantilla") || "mi_plantilla";
-                        try {
-                            const res = await fetch('/api/topology/save', {
-                            method: 'POST',
-                            headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({ name: nombre, format: 'full' }) // o 'deploy'
-                            });
-                            if (!res.ok) throw new Error('Error al guardar');
-                            const data = await res.json();
-                            alert(`Guardado ✅\nArchivo: ${data.filename}\nRuta: ${data.file}`);
-                        } catch (e) {
-                            alert('❌ No se pudo guardar: ' + e.message);
-                        }
-                        });
-                        </script>
-
+                    <button id="btnGuardar" class="w-full py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 mb-2 flex items-center justify-center gap-2 transition-colors">
+                        <i data-lucide="save" class="w-4 h-4"></i>
+                        Guardar plantilla
+                    </button>
                 </div>
 
-                <!--
-                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                    <h4 class="font-bold text-blue-900 mb-2">📘 Instrucciones</h4>
-                    <ul class="text-xs text-blue-800 space-y-1">
-                        <li>• <strong>Mover VM:</strong> Arrastra cualquier nodo</li>
-                        <li>• <strong>Seleccionar:</strong> Click en una VM</li>
-                        <li>• <strong>Conectar:</strong> Activa modo y selecciona 2 VMs</li>
-                        <li>• <strong>Eliminar conexión:</strong> Click en el punto rojo de la línea</li>
-                        <li>• <strong>Eliminar VM:</strong> Selecciona y usa el botón rojo</li>
-                    </ul>
+                <!-- Panel de Configuración de VM Seleccionada -->
+                <div id="selected-vm-panel" class="bg-white rounded-lg shadow-lg p-4 hidden">
+                    <h3 class="font-bold text-lg mb-3 flex items-center gap-2">
+                        <i data-lucide="server" class="w-5 h-5"></i>
+                        Configurar VM-<span id="selected-vm-id"></span>
+                    </h3>
+                    
+                    <div class="space-y-3 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">vCPUs</label>
+                            <select id="selected-vm-vcpus" class="w-full p-2 border border-gray-300 rounded text-sm">
+                                <option value="1">1 vCPU</option>
+                                <option value="2" selected>2 vCPUs</option>
+                                <option value="4">4 vCPUs</option>
+                                <option value="8">8 vCPUs</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">RAM (GB)</label>
+                            <select id="selected-vm-ram" class="w-full p-2 border border-gray-300 rounded text-sm">
+                                <option value="1">1 GB</option>
+                                <option value="2" selected>2 GB</option>
+                                <option value="4">4 GB</option>
+                                <option value="8">8 GB</option>
+                                <option value="16">16 GB</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Disco (GB)</label>
+                            <select id="selected-vm-disk" class="w-full p-2 border border-gray-300 rounded text-sm">
+                                <option value="10">10 GB</option>
+                                <option value="20" selected>20 GB</option>
+                                <option value="40">40 GB</option>
+                                <option value="80">80 GB</option>
+                                <option value="160">160 GB</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Flavors Predefinidos</label>
+                            <select id="selected-vm-flavor-preset" class="w-full p-2 border border-gray-300 rounded text-sm">
+                                <option value="custom">Personalizado</option>
+                                <option value="small">Small (1vCPU, 2GB RAM, 20GB Disk)</option>
+                                <option value="medium" selected>Medium (2vCPU, 4GB RAM, 40GB Disk)</option>
+                                <option value="large">Large (4vCPU, 8GB RAM, 80GB Disk)</option>
+                                <option value="xlarge">X-Large (8vCPU, 16GB RAM, 160GB Disk)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2">
+                        <button id="update-vm-flavor-btn" class="flex-1 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
+                            Aplicar Cambios
+                        </button>
+                        <button id="delete-node-btn" class="flex-1 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm flex items-center justify-center gap-1">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            Eliminar
+                        </button>
+                    </div>
                 </div>
-                -->
 
                 <div class="bg-white rounded-lg shadow-lg p-4">
                     <h4 class="font-bold text-sm mb-2">📊 Estadísticas</h4>
@@ -190,38 +229,252 @@
                 </div>
             </div>
         </div>
-
-        <!-- Descripción de Topologías 
-        <div class="bg-white rounded-lg shadow-lg p-6">
-            <h3 class="font-bold text-lg mb-4">Tipos de Topologías</h3>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div class="border rounded p-3 hover:border-blue-400 transition-colors">
-                    <h4 class="font-semibold text-sm mb-1">🔗 Punto a Punto</h4>
-                    <p class="text-xs text-gray-600">Conexión directa entre 2 VMs</p>
-                </div>
-                <div class="border rounded p-3 hover:border-blue-400 transition-colors">
-                    <h4 class="font-semibold text-sm mb-1">⭐ Estrella</h4>
-                    <p class="text-xs text-gray-600">VM central conecta todas</p>
-                </div>
-                <div class="border rounded p-3 hover:border-blue-400 transition-colors">
-                    <h4 class="font-semibold text-sm mb-1">⭕ Anillo</h4>
-                    <p class="text-xs text-gray-600">VMs en círculo cerrado</p>
-                </div>
-                <div class="border rounded p-3 hover:border-blue-400 transition-colors">
-                    <h4 class="font-semibold text-sm mb-1">🌲 Árbol</h4>
-                    <p class="text-xs text-gray-600">Jerarquía configurable</p>
-                </div>
-                <div class="border rounded p-3 hover:border-blue-400 transition-colors">
-                    <h4 class="font-semibold text-sm mb-1">🚌 Bus</h4>
-                    <p class="text-xs text-gray-600">VMs en línea secuencial</p>
-                </div>
-                <div class="border rounded p-3 hover:border-blue-400 transition-colors">
-                    <h4 class="font-semibold text-sm mb-1">🕸️ Malla</h4>
-                    <p class="text-xs text-gray-600">Todas conectadas entre sí</p>
-                </div>
-            </div>
-        </div> -->
     </div>
+
+    <script>
+        // Inicializar íconos de Lucide
+        lucide.createIcons();
+
+        // Variables globales
+        let currentSelectedNodeId = null;
+
+        // Manejo de flavors predefinidos PARA VM SELECCIONADA
+        document.getElementById('selected-vm-flavor-preset').addEventListener('change', function() {
+            const preset = this.value;
+            const vcpusSelect = document.getElementById('selected-vm-vcpus');
+            const ramSelect = document.getElementById('selected-vm-ram');
+            const diskSelect = document.getElementById('selected-vm-disk');
+
+            switch(preset) {
+                case 'small':
+                    vcpusSelect.value = '1';
+                    ramSelect.value = '2';
+                    diskSelect.value = '20';
+                    break;
+                case 'medium':
+                    vcpusSelect.value = '2';
+                    ramSelect.value = '4';
+                    diskSelect.value = '40';
+                    break;
+                case 'large':
+                    vcpusSelect.value = '4';
+                    ramSelect.value = '8';
+                    diskSelect.value = '80';
+                    break;
+                case 'xlarge':
+                    vcpusSelect.value = '8';
+                    ramSelect.value = '16';
+                    diskSelect.value = '160';
+                    break;
+            }
+        });
+
+        // Actualizar cuando cambian los selects individuales DE VM SELECCIONADA
+        document.getElementById('selected-vm-vcpus').addEventListener('change', function() {
+            document.getElementById('selected-vm-flavor-preset').value = 'custom';
+        });
+        document.getElementById('selected-vm-ram').addEventListener('change', function() {
+            document.getElementById('selected-vm-flavor-preset').value = 'custom';
+        });
+        document.getElementById('selected-vm-disk').addEventListener('change', function() {
+            document.getElementById('selected-vm-flavor-preset').value = 'custom';
+        });
+
+        // Botón para actualizar flavor de VM seleccionada
+        document.getElementById('update-vm-flavor-btn').addEventListener('click', async () => {
+            if (!currentSelectedNodeId) return;
+
+            const flavor = {
+                vcpus: document.getElementById('selected-vm-vcpus').value,
+                ram: document.getElementById('selected-vm-ram').value,
+                disk: document.getElementById('selected-vm-disk').value
+            };
+
+            try {
+                const response = await fetch(`/api/nodes/${currentSelectedNodeId}/flavor`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ flavor })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Actualizar estado local
+                    if (typeof state !== 'undefined') {
+                        state.nodes = data.topology.nodes;
+                        state.edges = data.topology.edges;
+                        drawTopology();
+                    }
+                    showNotification(`Configuración de VM-${currentSelectedNodeId} actualizada`, 'success');
+                } else {
+                    showNotification('Error al actualizar configuración: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error updating node flavor:', error);
+                showNotification('Error al actualizar configuración', 'error');
+            }
+        });
+
+        // Función para mostrar configuración de VM seleccionada
+        window.showSelectedVMConfig = function(nodeId) {
+            currentSelectedNodeId = nodeId;
+            document.getElementById('selected-vm-id').textContent = nodeId;
+            
+            // Buscar el flavor actual del nodo
+            if (typeof state !== 'undefined') {
+                const node = state.nodes.find(n => n.id === nodeId);
+                if (node && node.flavor) {
+                    document.getElementById('selected-vm-vcpus').value = node.flavor.vcpus;
+                    document.getElementById('selected-vm-ram').value = node.flavor.ram;
+                    document.getElementById('selected-vm-disk').value = node.flavor.disk;
+                    
+                    // Actualizar preset si corresponde
+                    const presetSelect = document.getElementById('selected-vm-flavor-preset');
+                    if (node.flavor.vcpus == 1 && node.flavor.ram == 2 && node.flavor.disk == 20) {
+                        presetSelect.value = 'small';
+                    } else if (node.flavor.vcpus == 2 && node.flavor.ram == 4 && node.flavor.disk == 40) {
+                        presetSelect.value = 'medium';
+                    } else if (node.flavor.vcpus == 4 && node.flavor.ram == 8 && node.flavor.disk == 80) {
+                        presetSelect.value = 'large';
+                    } else if (node.flavor.vcpus == 8 && node.flavor.ram == 16 && node.flavor.disk == 160) {
+                        presetSelect.value = 'xlarge';
+                    } else {
+                        presetSelect.value = 'custom';
+                    }
+                }
+            }
+            
+            // Mostrar panel de configuración
+            document.getElementById('selected-vm-panel').classList.remove('hidden');
+        };
+
+        // Guardar plantilla
+        document.getElementById('btnGuardar').addEventListener('click', async () => {
+            const nombre = prompt("Nombre de la plantilla:", "mi_plantilla") || "mi_plantilla";
+            
+            // Obtener AZ seleccionada
+            const az = document.querySelector('input[name="slice-az"]:checked').value;
+
+            try {
+                const res = await fetch('/api/topology/save', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ 
+                        name: nombre, 
+                        format: 'full',
+                        flavor: {vcpus: 2, ram: 2, disk: 20}, // Default
+                        az: az
+                    })
+                });
+                if (!res.ok) throw new Error('Error al guardar');
+                const data = await res.json();
+                alert(`Guardado ✅\nArchivo: ${data.filename}`);
+            } catch (e) {
+                alert('❌ No se pudo guardar: ' + e.message);
+            }
+        });
+
+        // Cargar plantilla JSON
+        document.getElementById('load-json').addEventListener('click', () => {
+            document.getElementById('file-input').click();
+        });
+
+        document.getElementById('file-input').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/topology/load', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Actualizar estado local
+                    if (typeof state !== 'undefined') {
+                        state.nodes = data.topology.nodes;
+                        state.edges = data.topology.edges;
+                        drawTopology();
+                        perfectCenterTopology();
+                    }
+                    showNotification('Plantilla cargada exitosamente', 'success');
+                } else {
+                    showNotification('Error al cargar plantilla: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error loading template:', error);
+                showNotification('Error al cargar plantilla', 'error');
+            }
+        });
+
+        // Exportar como imagen
+        document.getElementById('export-svg-btn').addEventListener('click', exportAsSVG);
+        document.getElementById('export-png-btn').addEventListener('click', exportAsPNG);
+
+        function exportAsSVG() {
+            const svgElement = document.getElementById('network-svg');
+            const serializer = new XMLSerializer();
+            let svgString = serializer.serializeToString(svgElement);
+            
+            // Añadir declaración XML
+            svgString = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + svgString;
+            
+            // Crear blob y descargar
+            const blob = new Blob([svgString], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'topology.svg';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showNotification('SVG exportado exitosamente', 'success');
+        }
+
+        function exportAsPNG() {
+            const svgElement = document.getElementById('network-svg');
+            const serializer = new XMLSerializer();
+            let svgString = serializer.serializeToString(svgElement);
+            
+            // Añadir declaración XML
+            svgString = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + svgString;
+            
+            // Crear canvas para convertir SVG a PNG
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const svgBlob = new Blob([svgString], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(svgBlob);
+            
+            const img = new Image();
+            img.onload = function() {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                
+                // Descargar PNG
+                const pngUrl = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = pngUrl;
+                a.download = 'topology.png';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showNotification('PNG exportado exitosamente', 'success');
+            };
+            
+            img.src = url;
+        }
+    </script>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>

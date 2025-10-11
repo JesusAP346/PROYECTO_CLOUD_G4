@@ -1,0 +1,67 @@
+{
+  "metadata": {
+    "name": "ejemplo_topologia",
+    "created_at": "2025-10-11T02:26:00.000000",
+    "format": "full"
+  },
+  "flavor_defaults": {
+    "vcpus": 2,
+    "ram": 4,
+    "disk": 40
+  },
+  "availability_zone": "linux-AZ-1",
+  "topology": {
+    "nodes": [
+      {
+        "id": 1,
+        "x": 5000,
+        "y": 5000,
+        "label": "VM-1",
+        "flavor": {
+          "vcpus": 2,
+          "ram": 4,
+          "disk": 40
+        },
+        "az": "linux-AZ-1"
+      },
+      {
+        "id": 2,
+        "x": 4900,
+        "y": 5100,
+        "label": "VM-2",
+        "flavor": {
+          "vcpus": 2,
+          "ram": 4,
+          "disk": 40
+        },
+        "az": "linux-AZ-1"
+      },
+      {
+        "id": 3,
+        "x": 5100,
+        "y": 5100,
+        "label": "VM-3",
+        "flavor": {
+          "vcpus": 2,
+          "ram": 4,
+          "disk": 40
+        },
+        "az": "linux-AZ-1"
+      }
+    ],
+    "edges": [
+      {
+        "from": 1,
+        "to": 2
+      },
+      {
+        "from": 2,
+        "to": 3
+      },
+      {
+        "from": 3,
+        "to": 1
+      }
+    ]
+  }
+}
