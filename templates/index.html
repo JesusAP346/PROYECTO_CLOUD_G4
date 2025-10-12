@@ -195,6 +195,10 @@
                                 <option value="medium">Medium (2vCPU, 1GB RAM, 2GB Disk)</option>
                                 <option value="large">Large (3vCPU, 1.5GB RAM, 3GB Disk)</option>
                                 <option value="xlarge">X-Large (4vCPU, 2GB RAM, 4GB Disk)</option>
+                                <option value="Flavor1Personalizado">Flavor1Personalizado (1vCPU, 0.5GB RAM, 2.2GB Disk)</option>
+                                <option value="Flavor2Personalizado">Flavor2Personalizado (1vCPU, 0.5GB RAM, 1GB Disk)</option>
+
+
                             </select>
                         </div>
                     </div>
@@ -283,6 +287,16 @@
                     ramInput.value = '2';
                     diskInput.value = '4';
                     break;
+                case 'Flavor1Personalizado':
+                    vcpusInput.value = '1';
+                    ramInput.value = '0.5';
+                    diskInput.value = '2.2';
+                    break;
+                case 'Flavor2Personalizado':
+                    vcpusInput.value = '1';
+                    ramInput.value = '0.5';
+                    diskInput.value = '1';
+                    break;
             }
         });
 
@@ -356,6 +370,10 @@
                         presetSelect.value = 'large';
                     } else if (node.flavor.vcpus == 4 && node.flavor.ram == 2 && node.flavor.disk == 4) {
                         presetSelect.value = 'xlarge';
+                    } else if (node.flavor.vcpus == 1 && node.flavor.ram == 0.5 && node.flavor.disk == 2.2) {
+                        presetSelect.value = 'Flavor1Personalizado';
+                    } else if (node.flavor.vcpus == 1 && node.flavor.ram == 0.5 && node.flavor.disk == 1) {
+                        presetSelect.value = 'Flavor2Personalizado';
                     } else {
                         presetSelect.value = 'custom';
                     }
