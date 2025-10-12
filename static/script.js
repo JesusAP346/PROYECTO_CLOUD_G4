@@ -49,7 +49,7 @@ const elements = {
 function validateFlavor(flavor) {
     const vcpus = parseInt(flavor.vcpus);
     const ram = parseFloat(flavor.ram);
-    const disk = parseInt(flavor.disk);
+    const disk = parseFloat(flavor.disk);
     
     if (isNaN(vcpus) || vcpus < 1 || vcpus > 4) {
         return { valid: false, error: "vCPUs debe ser un número entero entre 1 y 4" };
@@ -59,8 +59,9 @@ function validateFlavor(flavor) {
         return { valid: false, error: "RAM debe ser entre 0.5 y 4 GB (múltiplos de 0.5)" };
     }
     
+    // Ahora permite decimales para disco
     if (isNaN(disk) || disk < 1 || disk > 10) {
-        return { valid: false, error: "Disco debe ser un número entero entre 1 y 10 GB" };
+        return { valid: false, error: "Disco debe ser un número entre 1 y 10 GB" };
     }
     
     return { valid: true };
@@ -72,7 +73,8 @@ document.addEventListener('DOMContentLoaded', function() {
     setupInfiniteCanvas();
     loadTopologyState();
     setupEventListeners();
-    setupAZListeners(); // Nuevo: Configurar listeners para AZ
+    setupAZListeners();
+    setupSaveListener(); // Configurar el listener de guardado
     applyZoom();
 });
 
@@ -83,6 +85,93 @@ function setupInfiniteCanvas() {
     elements.svg.style.minWidth = '100%';
     elements.svg.style.minHeight = '100%';
     elements.svg.style.overflow = 'visible';
+}
+
+// Configuración del listener de guardado - SIMPLIFICADO
+function setupSaveListener() {
+    const btnGuardar = document.getElementById('btnGuardar');
+    
+    // Remover cualquier event listener existente
+    const newBtn = btnGuardar.cloneNode(true);
+    btnGuardar.parentNode.replaceChild(newBtn, btnGuardar);
+    
+    // Agregar el event listener al nuevo botón - SIN closures complejos
+    document.getElementById('btnGuardar').addEventListener('click', handleSaveTemplate);
+}
+
+// Función manejadora del guardado - SIMPLIFICADA
+async function handleSaveTemplate() {
+    const nombre = prompt("Nombre de la plantilla:", "mi_plantilla");
+    
+    // Verificar explícitamente si el usuario canceló
+    if (nombre === null) {
+        console.log('Usuario canceló el guardado');
+        return;
+    }
+    
+    // Usar nombre por defecto si está vacío
+    const nombreFinal = nombre.trim() === "" ? "mi_plantilla" : nombre;
+    
+    // Obtener AZ seleccionada
+    const azInput = document.querySelector('input[name="slice-az"]:checked');
+    const az = azInput ? azInput.value : '';
+    
+    console.log('Iniciando guardado:', { nombre: nombreFinal, az });
+
+    try {
+        const response = await fetch('/api/topology/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ 
+                name: nombreFinal, 
+                az: az
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(`✅ Plantilla guardada: ${data.filename}`, 'success');
+        } else {
+            throw new Error(data.error || 'Error desconocido al guardar');
+        }
+        
+    } catch (error) {
+        console.error('Error al guardar plantilla:', error);
+        showNotification(`❌ Error al guardar: ${error.message}`, 'error');
+    }
+}
+
+// NUEVA FUNCIÓN: Configurar listeners para Availability Zone
+function setupAZListeners() {
+    const azRadios = document.querySelectorAll('input[name="slice-az"]');
+    azRadios.forEach(radio => {
+        radio.addEventListener('change', async function() {
+            const azValue = this.value;
+            
+            try {
+                const response = await fetch('/api/placement/az', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ az: azValue === "" ? null : azValue })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showNotification(`Zona de disponibilidad establecida: ${azValue || 'Automático'}`, 'success');
+                } else {
+                    showNotification('Error al establecer AZ: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error setting AZ:', error);
+                showNotification('Error al establecer la zona de disponibilidad', 'error');
+            }
+        });
+    });
 }
 
 function setupEventListeners() {
@@ -122,34 +211,6 @@ function setupEventListeners() {
     elements.svg.addEventListener('mousemove', handleMouseMove);
     elements.svg.addEventListener('mouseup', handleMouseUp);
     elements.svg.addEventListener('mouseleave', handleMouseUp);
-}
-
-// NUEVA FUNCIÓN: Configurar listeners para Availability Zone
-function setupAZListeners() {
-    const azRadios = document.querySelectorAll('input[name="slice-az"]');
-    azRadios.forEach(radio => {
-        radio.addEventListener('change', async function() {
-            const azValue = this.value;
-            
-            try {
-                const response = await fetch('/api/placement/az', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ az: azValue === "" ? null : azValue })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    showNotification(`Zona de disponibilidad establecida: ${azValue || 'Automático'}`, 'success');
-                } else {
-                    showNotification('Error al establecer AZ: ' + data.error, 'error');
-                }
-            } catch (error) {
-                console.error('Error setting AZ:', error);
-                showNotification('Error al establecer la zona de disponibilidad', 'error');
-            }
-        });
-    });
 }
 
 // Función para manejar clic en SVG
@@ -760,30 +821,6 @@ function getSelectedAZSingle() {
     const val = (checked && checked.value) || "";
     return { az: val === "" ? null : val };
 }
-
-// MODIFICADO: Guardar plantilla con AZ
-document.getElementById('btnGuardar').addEventListener('click', async () => {
-    const nombre = prompt("Nombre de la plantilla:", "mi_plantilla") || "mi_plantilla";
-    
-    // Obtener AZ seleccionada
-    const az = document.querySelector('input[name="slice-az"]:checked').value;
-
-    try {
-        const res = await fetch('/api/topology/save', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ 
-                name: nombre, 
-                az: az
-            })
-        });
-        if (!res.ok) throw new Error('Error al guardar');
-        const data = await res.json();
-        alert(`Guardado ✅\nArchivo: ${data.filename}`);
-    } catch (e) {
-        alert('❌ No se pudo guardar: ' + e.message);
-    }
-});
 
 // MODIFICADO: Cargar plantilla con AZ
 document.getElementById('file-input').addEventListener('change', async (event) => {

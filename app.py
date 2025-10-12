@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import tempfile
 import random
+import re
 
 app = Flask(__name__)
 
@@ -43,14 +44,14 @@ class NetworkTopology:
             except (ValueError, TypeError):
                 return False, "RAM debe ser un número"
         
-        # Validar Disco (1-10 GB enteros)
+        # Validar Disco (1-10 GB, ahora con decimales)
         if disk is not None:
             try:
-                disk = int(disk)
+                disk = float(disk)
                 if disk < 1 or disk > 10:
                     return False, "Disco debe estar entre 1 y 10 GB"
             except (ValueError, TypeError):
-                return False, "Disco debe ser un número entero"
+                return False, "Disco debe ser un número"
                 
         return True, ""
 
@@ -441,6 +442,13 @@ def save_topology():
         name = data.get('name', 'topology')
         az = data.get('az', '')
         
+        # Validar que el nombre no esté vacío
+        if not name or name.strip() == "":
+            name = 'topology'
+        
+        # Limpiar el nombre para que sea válido como archivo
+        name = re.sub(r'[^\w\-_.]', '_', name)
+        
         template_data = {
             'metadata': {
                 'name': name,
@@ -491,21 +499,6 @@ def export_topology_json():
         return jsonify({
             'success': True,
             'data': template_data
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        })
-
-@app.route('/api/topology/save-db', methods=['POST'])
-def save_topology_db():
-    """Guarda la topología en base de datos (placeholder para futura implementación)"""
-    try:
-        return jsonify({
-            'success': True,
-            'message': 'Funcionalidad de guardado en base de datos estará disponible próximamente',
-            'note': 'Por ahora use "Guardar plantilla" para guardar en archivo JSON'
         })
     except Exception as e:
         return jsonify({
