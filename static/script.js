@@ -617,13 +617,13 @@ function toggleConnectMode() {
     if (state.connectMode) {
         elements.connectBtn.textContent = 'Cancelar Conexión';
         elements.connectBtn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
-        elements.connectBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+        elements.connectBtn.classList.add('bg-red-600', 'hover:bg-red-700');
         elements.connectModeIndicator.classList.remove('hidden');
         updateConnectStep();
         showNotification('Modo conexión activado. Selecciona la VM de origen.', 'info');
     } else {
         elements.connectBtn.textContent = 'Conectar VMs';
-        elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+        elements.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
         elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
         elements.connectModeIndicator.classList.add('hidden');
         showNotification('Modo conexión desactivado', 'info');
