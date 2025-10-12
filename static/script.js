@@ -1,3 +1,40 @@
+// Función para obtener headers con JWT
+function getAuthHeaders() {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        console.error('❌ NO HAY TOKEN JWT EN LOCALSTORAGE!');
+        window.location.href = '/login';
+        return {};
+    }
+    console.log('✅ Token JWT encontrado:', token.substring(0, 20) + '...');
+    return {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+}
+
+// Función para validar flavor antes de enviar al backend
+function validateFlavor(flavor) {
+    const vcpus = parseInt(flavor.vcpus);
+    const ram = parseFloat(flavor.ram);
+    const disk = parseFloat(flavor.disk);
+
+    if (isNaN(vcpus) || vcpus < 1 || vcpus > 4) {
+        return { valid: false, error: "vCPUs debe ser un número entero entre 1 y 4" };
+    }
+
+    if (isNaN(ram) || ram < 0.5 || ram > 4 || (ram * 2) % 1 !== 0) {
+        return { valid: false, error: "RAM debe ser entre 0.5 y 4 GB (múltiplos de 0.5)" };
+    }
+
+    // Ahora permite decimales para disco
+    if (isNaN(disk) || disk < 1 || disk > 10) {
+        return { valid: false, error: "Disco debe ser un número entre 1 y 10 GB" };
+    }
+
+    return { valid: true };
+}
+
 // Estado de la aplicación
 let state = {
     nodes: [],
@@ -52,6 +89,8 @@ document.addEventListener('DOMContentLoaded', function() {
     setupInfiniteCanvas();
     loadTopologyState();
     setupEventListeners();
+    setupAZListeners();
+    initializeDefaultAZ();
     applyZoom();
 });
 
@@ -104,6 +143,49 @@ function setupEventListeners() {
     elements.svg.addEventListener('mouseleave', handleMouseUp);
 }
 
+// NUEVA FUNCIÓN: Configurar listeners para Availability Zone
+function setupAZListeners() {
+    const azRadios = document.querySelectorAll('input[name="slice-az"]');
+    azRadios.forEach(radio => {
+        radio.addEventListener('change', async function() {
+            const azValue = this.value;
+
+            try {
+                const response = await fetch('/api/placement/az', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ az: azValue === "" ? null : azValue })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showNotification(`Zona de disponibilidad establecida: ${azValue || 'Automático'}`, 'success');
+                } else {
+                    showNotification('Error al establecer AZ: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error setting AZ:', error);
+                showNotification('Error al establecer la zona de disponibilidad', 'error');
+            }
+        });
+    });
+}
+
+// NUEVA FUNCIÓN: Establecer AZ por defecto al cargar la página
+async function initializeDefaultAZ() {
+    try {
+        // Establecer linux-AZ-1 como zona de disponibilidad por defecto
+        await fetch('/api/placement/az', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ az: 'linux-AZ-1' })
+        });
+        console.log('Zona de disponibilidad por defecto establecida: linux-AZ-1');
+    } catch (error) {
+        console.error('Error estableciendo AZ por defecto:', error);
+    }
+}
+
 // NUEVA FUNCIÓN: Limpiar toda la topología
 async function clearAll() {
     if (state.nodes.length === 0) {
@@ -118,9 +200,7 @@ async function clearAll() {
     try {
         const response = await fetch('/api/topology/clear', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
+            headers: getAuthHeaders()
         });
         
         const data = await response.json();
@@ -386,7 +466,7 @@ async function generateTopology() {
     try {
         await fetch('/api/placement/az', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders(),
             body: JSON.stringify(placement)
         });
     } catch (e) {
@@ -397,7 +477,7 @@ async function generateTopology() {
     try {
         const response = await fetch('/api/topology/generate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders(),
             body: JSON.stringify({ type: topologyType, config })
         });
 
@@ -419,78 +499,110 @@ async function generateTopology() {
 
 function perfectCenterTopology() {
     if (state.nodes.length === 0) return;
-    
+
     // Calcular el área ocupada por todos los nodos
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
-    
+
     state.nodes.forEach(node => {
         minX = Math.min(minX, node.x - 40); // Incluir radio del nodo
         maxX = Math.max(maxX, node.x + 40);
         minY = Math.min(minY, node.y - 40);
         maxY = Math.max(maxY, node.y + 40);
     });
-    
+
     const contentWidth = maxX - minX;
     const contentHeight = maxY - minY;
     const contentCenterX = (minX + maxX) / 2;
     const contentCenterY = (minY + maxY) / 2;
-    
+
     // Obtener dimensiones del contenedor visible
     const container = elements.svgContainer;
     const containerWidth = container.clientWidth;
     const containerHeight = container.clientHeight;
-    
-    // Calcular escala para que la topología ocupe ~70% del área visible
+
+    // MEJORADO: Calcular escala con límites más razonables
     const targetScaleX = (containerWidth * 0.7) / contentWidth;
     const targetScaleY = (containerHeight * 0.7) / contentHeight;
-    const targetScale = Math.min(targetScaleX, targetScaleY, 2.5); // Limitar zoom máximo
-    
+
+    // Limitar zoom: mínimo 0.3 (no muy chico), máximo 2.5 (no muy grande)
+    const targetScale = Math.min(Math.max(targetScaleX, targetScaleY, 0.3), 2.5);
+
     // Calcular traslación para centrar perfectamente
     const targetTranslateX = (containerWidth / 2) - (contentCenterX * targetScale);
     const targetTranslateY = (containerHeight / 2) - (contentCenterY * targetScale);
-    
+
     // Aplicar suavemente la nueva vista
     scale = targetScale;
     translateX = targetTranslateX;
     translateY = targetTranslateY;
-    
+
     applyZoom();
+
+    console.log(`✅ Topología centrada: scale=${targetScale.toFixed(2)}, nodes=${state.nodes.length}`);
 }
 
 async function addRandomNode() {
-    // Usar coordenadas cerca del centro pero con variación mínima
-    const x = 5000 + (Math.random() - 0.5) * 200;
-    const y = 5000 + (Math.random() - 0.5) * 200;
-    
-    // Obtener configuración de flavor por defecto
+    let x, y;
+
+    // Si ya hay nodos, calcular el centro y crear cerca de ahí
+    if (state.nodes.length > 0) {
+        let sumX = 0, sumY = 0;
+        state.nodes.forEach(node => {
+            sumX += node.x;
+            sumY += node.y;
+        });
+        const centerX = sumX / state.nodes.length;
+        const centerY = sumY / state.nodes.length;
+
+        // Crear la nueva VM cerca del centro de los nodos existentes
+        x = centerX + (Math.random() - 0.5) * 150;
+        y = centerY + (Math.random() - 0.5) * 150;
+    } else {
+        // Si no hay nodos, crear en el centro del canvas
+        x = 5000 + (Math.random() - 0.5) * 100;
+        y = 5000 + (Math.random() - 0.5) * 100;
+    }
+
+    // Configuración de flavor por defecto
     const defaultFlavor = {
-        vcpus: document.getElementById('vm-vcpus').value,
-        ram: document.getElementById('vm-ram').value,
-        disk: document.getElementById('vm-disk').value
+        vcpus: 1,
+        ram: 0.5,
+        disk: 1
     };
-    
+
+    // Validar el flavor por defecto
+    const validation = validateFlavor(defaultFlavor);
+    if (!validation.valid) {
+        showNotification(validation.error, 'error');
+        return;
+    }
+
     try {
         const response = await fetch('/api/nodes', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ x, y, flavor: defaultFlavor })
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                x,
+                y,
+                flavor: defaultFlavor,
+                image: 'ubuntu',
+                internet_access: false
+            })
         });
-        
+
         const data = await response.json();
         if (data.success) {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
-            
-            // Centrar si hay pocos nodos
-            if (state.nodes.length <= 3) {
-                setTimeout(perfectCenterTopology, 50);
-            }
-            
+
+            // Centrar SIEMPRE después de agregar un nodo para ajustar la vista
+            setTimeout(perfectCenterTopology, 50);
+
             showNotification('VM agregada exitosamente', 'success');
+        } else {
+            showNotification('Error al agregar VM: ' + data.error, 'error');
         }
     } catch (error) {
         console.error('Error adding node:', error);
@@ -531,7 +643,8 @@ async function deleteSelectedNode() {
     
     try {
         const response = await fetch(`/api/nodes/${state.selectedNode}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: getAuthHeaders()
         });
         
         const data = await response.json();
@@ -596,9 +709,7 @@ async function connectNodes(fromId, toId) {
     try {
         const response = await fetch('/api/edges', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify({ from: fromId, to: toId })
         });
         
@@ -621,9 +732,7 @@ async function deleteEdge(fromId, toId) {
     try {
         const response = await fetch('/api/edges/delete', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: getAuthHeaders(),
             body: JSON.stringify({ from: fromId, to: toId })
         });
         
@@ -701,9 +810,7 @@ async function handleMouseUp() {
         try {
             await fetch(`/api/nodes/${state.draggingNode}/move`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: getAuthHeaders(),
                 body: JSON.stringify({
                     x: node.x,
                     y: node.y
@@ -783,7 +890,7 @@ function drawTopology() {
         
         // Tooltip con información del flavor
         const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        title.textContent = `VM-${node.id}\n${node.flavor.vcpus} vCPU, ${node.flavor.ram}GB RAM, ${node.flavor.disk}GB Disk`;
+        title.textContent = `VM-${node.id}\n${node.flavor.vcpus} vCPU, ${node.flavor.ram}GB RAM, ${node.flavor.disk}GB Disk\nImagen: ${node.image || 'ubuntu'}\nInternet: ${node.internet_access !== false ? 'Sí' : 'No'}`;
         circle.appendChild(title);
         
         svgGroup.appendChild(circle);
@@ -827,13 +934,53 @@ function drawTopology() {
 
 async function loadTopologyState() {
     try {
-        const response = await fetch('/api/topology/state');
-        const data = await response.json();
-        state.nodes = data.nodes;
-        state.edges = data.edges;
-        drawTopology();
+        // Si tenemos template_data desde el servidor (estamos editando), usarlo
+        if (typeof templateData !== 'undefined' && templateData !== null) {
+            console.log('📝 Cargando topología desde plantilla:', templateName);
+            state.nodes = templateData.nodes || [];
+            state.edges = templateData.edges || [];
+
+            // Sincronizar con el servidor - cargar la topología en el backend
+            await fetch('/api/topology/sync', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    nodes: state.nodes,
+                    edges: state.edges
+                })
+            });
+
+            // Si hay nodos, centrar la topología
+            if (state.nodes.length > 0) {
+                drawTopology();
+                setTimeout(() => perfectCenterTopology(), 200);
+            } else {
+                drawTopology();
+            }
+
+            // Si hay AZ de plantilla, seleccionarlo
+            if (typeof templateAZ !== 'undefined' && templateAZ) {
+                const radioBtn = document.querySelector(`input[name="slice-az"][value="${templateAZ}"]`);
+                if (radioBtn) radioBtn.checked = true;
+            }
+        } else {
+            // Si no hay template_data, es una NUEVA plantilla - limpiar estado
+            console.log('✨ Nueva plantilla - limpiando estado');
+            const response = await fetch('/api/topology/clear', {
+                method: 'POST',
+                headers: getAuthHeaders()
+            });
+            const data = await response.json();
+            state.nodes = data.topology.nodes;
+            state.edges = data.topology.edges;
+            drawTopology();
+        }
     } catch (error) {
         console.error('Error loading topology state:', error);
+        // Si falla, inicializar vacío
+        state.nodes = [];
+        state.edges = [];
+        drawTopology();
     }
 }
 

@@ -1,0 +1,243 @@
+{
+  "metadata": {
+    "name": "prueba-json",
+    "created_at": "2025-10-12T10:44:54.059149",
+    "availability_zone": "linux-AZ-1"
+  },
+  "topology": {
+    "nodes": [
+      {
+        "id": 1,
+        "x": 200,
+        "y": 150,
+        "label": "VM-1",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 2,
+        "x": 95,
+        "y": 207,
+        "label": "VM-2",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 3,
+        "x": 200,
+        "y": 230,
+        "label": "VM-3",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 4,
+        "x": 300,
+        "y": 230,
+        "label": "VM-4",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 5,
+        "x": 66.66666666666666,
+        "y": 310,
+        "label": "VM-5",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 6,
+        "x": 100,
+        "y": 310,
+        "label": "VM-6",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 7,
+        "x": 133.33333333333331,
+        "y": 310,
+        "label": "VM-7",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 8,
+        "x": 166.66666666666666,
+        "y": 310,
+        "label": "VM-8",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 9,
+        "x": 200,
+        "y": 310,
+        "label": "VM-9",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 10,
+        "x": 233.33333333333334,
+        "y": 310,
+        "label": "VM-10",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 11,
+        "x": 266.66666666666663,
+        "y": 310,
+        "label": "VM-11",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 12,
+        "x": 300,
+        "y": 310,
+        "label": "VM-12",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 13,
+        "x": 333.33333333333337,
+        "y": 310,
+        "label": "VM-13",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-1",
+        "image": "ubuntu",
+        "internet_access": false
+      }
+    ],
+    "edges": [
+      {
+        "from": 1,
+        "to": 2
+      },
+      {
+        "from": 1,
+        "to": 3
+      },
+      {
+        "from": 1,
+        "to": 4
+      },
+      {
+        "from": 2,
+        "to": 5
+      },
+      {
+        "from": 2,
+        "to": 6
+      },
+      {
+        "from": 2,
+        "to": 7
+      },
+      {
+        "from": 3,
+        "to": 8
+      },
+      {
+        "from": 3,
+        "to": 9
+      },
+      {
+        "from": 3,
+        "to": 10
+      },
+      {
+        "from": 4,
+        "to": 11
+      },
+      {
+        "from": 4,
+        "to": 12
+      },
+      {
+        "from": 4,
+        "to": 13
+      }
+    ]
+  }
+}

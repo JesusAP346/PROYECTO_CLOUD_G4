@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro - TELECLOUD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <!-- Logo y t�tulo -->
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 rounded-2xl mb-4">
+                <i data-lucide="cloud" class="w-8 h-8 text-white"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Cloud Topology Manager</h1>
+            <p class="text-gray-600">Crea tu cuenta para comenzar</p>
+        </div>
+
+        <!-- Card de registro -->
+        <div class="bg-white rounded-2xl shadow-xl p-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Crear Cuenta</h2>
+
+            <!-- Error message (din�mico con JavaScript) -->
+            <div id="error-message" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg items-start gap-3 hidden">
+                <i data-lucide="alert-circle" class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"></i>
+                <p id="error-text" class="text-red-800 text-sm"></p>
+            </div>
+
+            <!-- Success message -->
+            <div id="success-message" class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg items-start gap-3 hidden">
+                <i data-lucide="check-circle" class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5"></i>
+                <p id="success-text" class="text-green-800 text-sm"></p>
+            </div>
+
+            <form id="register-form">
+                <!-- Username -->
+                <div class="mb-4">
+                    <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
+                        Usuario
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="user" class="w-5 h-5 text-gray-400"></i>
+                        </div>
+                        <input
+                            type="text"
+                            id="username"
+                            name="username"
+                            required
+                            minlength="3"
+                            class="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                            placeholder="tu_usuario"
+                        >
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">M�nimo 3 caracteres</p>
+                </div>
+
+                <!-- Email -->
+                <div class="mb-4">
+                    <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
+                        Email
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="mail" class="w-5 h-5 text-gray-400"></i>
+                        </div>
+                        <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            required
+                            class="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                            placeholder="tu@email.com"
+                        >
+                    </div>
+                </div>
+
+                <!-- Password -->
+                <div class="mb-4">
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                        Contrase�a
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="lock" class="w-5 h-5 text-gray-400"></i>
+                        </div>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            required
+                            minlength="6"
+                            class="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                            placeholder=""""""""""
+                        >
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">M�nimo 6 caracteres</p>
+                </div>
+
+                <!-- Confirm Password -->
+                <div class="mb-6">
+                    <label for="confirm-password" class="block text-sm font-medium text-gray-700 mb-2">
+                        Confirmar Contrase�a
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="lock" class="w-5 h-5 text-gray-400"></i>
+                        </div>
+                        <input
+                            type="password"
+                            id="confirm-password"
+                            name="confirm-password"
+                            required
+                            class="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                            placeholder=""""""""""
+                        >
+                    </div>
+                </div>
+
+                <!-- Info sobre rol por defecto -->
+                <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div class="flex items-start gap-2">
+                        <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
+                        <div class="text-sm text-blue-800">
+                            <p class="font-semibold mb-1">Cuenta de Usuario General</p>
+                            <ul class="list-disc list-inside text-xs space-y-1">
+                                <li>M�ximo 3 slices activos</li>
+                                <li>Acceso a zona linux-AZ-1</li>
+                                <li>Todas las funciones b�sicas</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit button -->
+                <button
+                    type="submit"
+                    id="register-btn"
+                    class="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    <i data-lucide="user-plus" class="w-5 h-5"></i>
+                    <span id="register-text">Crear Cuenta</span>
+                </button>
+            </form>
+
+            <!-- Divider -->
+            <div class="my-6 flex items-center">
+                <div class="flex-1 border-t border-gray-300"></div>
+                <span class="px-4 text-sm text-gray-500">o</span>
+                <div class="flex-1 border-t border-gray-300"></div>
+            </div>
+
+            <!-- Link a login -->
+            <div class="text-center">
+                <p class="text-gray-600 text-sm">
+                    �Ya tienes cuenta?
+                    <a href="/login" class="text-indigo-600 hover:text-indigo-700 font-semibold">
+                        Inicia sesi�n aqu�
+                    </a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-6 text-center text-sm text-gray-500">
+            <p>Cloud Topology Manager � 2025</p>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Manejar el registro
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+
+            const errorDiv = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            const successDiv = document.getElementById('success-message');
+            const successText = document.getElementById('success-text');
+            const registerBtn = document.getElementById('register-btn');
+            const registerText = document.getElementById('register-text');
+
+            // Ocultar mensajes previos
+            errorDiv.classList.add('hidden');
+            successDiv.classList.add('hidden');
+
+            // Validar que las contrase�as coincidan
+            if (password !== confirmPassword) {
+                errorText.textContent = 'Las contrase�as no coinciden';
+                errorDiv.classList.remove('hidden');
+                errorDiv.classList.add('flex');
+                lucide.createIcons();
+                return;
+            }
+
+            // Deshabilitar bot�n y mostrar loading
+            registerBtn.disabled = true;
+            registerText.textContent = 'Creando cuenta...';
+
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username,
+                        email,
+                        password,
+                        role: 'general'  // Por defecto todos son usuarios generales
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Mostrar mensaje de �xito
+                    successText.textContent = '�Cuenta creada exitosamente! Redirigiendo al login...';
+                    successDiv.classList.remove('hidden');
+                    successDiv.classList.add('flex');
+
+                    // Redirigir al login despu�s de 2 segundos
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                } else {
+                    // Mostrar error
+                    errorText.textContent = data.detail || 'Error al crear la cuenta';
+                    errorDiv.classList.remove('hidden');
+                    errorDiv.classList.add('flex');
+
+                    // Rehabilitar bot�n
+                    registerBtn.disabled = false;
+                    registerText.textContent = 'Crear Cuenta';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                errorText.textContent = 'Error de conexi�n. Verifica que el servidor est� corriendo.';
+                errorDiv.classList.remove('hidden');
+                errorDiv.classList.add('flex');
+
+                // Rehabilitar bot�n
+                registerBtn.disabled = false;
+                registerText.textContent = 'Crear Cuenta';
+            }
+
+            // Recrear iconos de Lucide
+            lucide.createIcons();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - TELECLOUD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+    <!-- Navbar -->
+    <nav class="bg-white shadow-lg border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center">
+                        <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center mr-3">
+                            <i data-lucide="cloud" class="w-6 h-6 text-white"></i>
+                        </div>
+                        <span class="text-xl font-bold text-gray-800">Cloud Topology Manager</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <div class="w-9 h-9 bg-indigo-100 rounded-lg flex items-center justify-center">
+                            <i data-lucide="user" class="w-5 h-5 text-indigo-600"></i>
+                        </div>
+                        <div class="text-sm">
+                            <p id="username" class="font-semibold text-gray-800">Cargando...</p>
+                            <p id="user-role" class="text-xs text-gray-500">
+                                <span class="text-blue-600 font-medium">...</span>
+                            </p>
+                        </div>
+                    </div>
+                    <button onclick="logout()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2">
+                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                        <span>Salir</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Header con estadísticas -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Dashboard</h1>
+            <p class="text-gray-600">Gestiona tus plantillas y slices desplegados</p>
+        </div>
+
+        <!-- Estadísticas -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500 transform transition hover:scale-105">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 uppercase">Plantillas</p>
+                        <p id="templates-count" class="text-3xl font-bold text-gray-800 mt-2">0</p>
+                    </div>
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="file-text" class="w-6 h-6 text-blue-600"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500 transform transition hover:scale-105">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 uppercase">Slices Activos</p>
+                        <p id="slices-count" class="text-3xl font-bold text-gray-800 mt-2">0</p>
+                    </div>
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                        <i data-lucide="activity" class="w-6 h-6 text-green-600"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botones de acción -->
+        <div class="mb-6 flex gap-4">
+            <a href="/editor" class="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-lg hover:shadow-xl">
+                <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                <span class="font-semibold">Crear Nueva Plantilla</span>
+            </a>
+            <!-- Botón de Admin (solo visible para administradores) -->
+            <a href="/admin" id="admin-panel-btn" class="hidden inline-flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-lg hover:shadow-xl">
+                <i data-lucide="shield" class="w-5 h-5"></i>
+                <span class="font-semibold">Panel de Administración</span>
+            </a>
+        </div>
+
+        <!-- Notificaciones -->
+        <div id="notification" class="hidden fixed top-4 right-4 z-50"></div>
+
+        <!-- Sección de Plantillas -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i data-lucide="folder" class="w-6 h-6 text-indigo-600"></i>
+                    Mis Plantillas
+                </h2>
+                <span id="templates-count-text" class="text-sm text-gray-500">0 plantilla(s)</span>
+            </div>
+
+            <div id="templates-container">
+                <div class="text-center py-12">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                    <p class="text-gray-500 mt-4">Cargando plantillas...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de Slices Desplegados -->
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i data-lucide="server" class="w-6 h-6 text-green-600"></i>
+                    Slices Desplegados
+                </h2>
+                <span id="slices-count-text" class="text-sm text-gray-500">0 slice(s) activo(s)</span>
+            </div>
+
+            <div id="slices-container">
+                <div class="text-center py-12">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+                    <p class="text-gray-500 mt-4">Cargando slices...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Obtener token JWT
+        function getToken() {
+            return localStorage.getItem('access_token');
+        }
+
+        // Headers con autenticación
+        function getAuthHeaders() {
+            const token = getToken();
+            return {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            };
+        }
+
+        // Logout
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+        }
+
+        // Verificar autenticación
+        async function checkAuth() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = '/login';
+                return null;
+            }
+
+            try {
+                const response = await fetch('/api/auth/me', {
+                    headers: getAuthHeaders()
+                });
+
+                if (!response.ok) {
+                    logout();
+                    return null;
+                }
+
+                const user = await response.json();
+
+                // Actualizar UI con info del usuario
+                document.getElementById('username').textContent = user.username;
+                const roleSpan = document.getElementById('user-role');
+
+                let roleText = '';
+                let roleClass = '';
+                if (user.role === 'admin') {
+                    roleText = 'Administrador';
+                    roleClass = 'text-purple-600';
+                } else if (user.role === 'vip') {
+                    roleText = 'VIP';
+                    roleClass = 'text-amber-600';
+                } else {
+                    roleText = 'Usuario General';
+                    roleClass = 'text-blue-600';
+                }
+
+                roleSpan.innerHTML = `<span class="${roleClass} font-medium">${roleText}</span>`;
+
+                // Mostrar botón de admin si es administrador
+                if (user.role === 'admin') {
+                    document.getElementById('admin-panel-btn').classList.remove('hidden');
+                }
+
+                lucide.createIcons();
+
+                return user;
+            } catch (error) {
+                console.error('Error checking auth:', error);
+                logout();
+                return null;
+            }
+        }
+
+        // Cargar plantillas
+        async function loadTemplates() {
+            try {
+                const response = await fetch('/api/templates', {
+                    headers: getAuthHeaders()
+                });
+
+                if (!response.ok) {
+                    throw new Error('Error al cargar plantillas');
+                }
+
+                const data = await response.json();
+                const templates = data.templates || [];
+
+                // Actualizar contador
+                document.getElementById('templates-count').textContent = templates.length;
+                document.getElementById('templates-count-text').textContent = `${templates.length} plantilla(s)`;
+
+                const container = document.getElementById('templates-container');
+
+                if (templates.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-12">
+                            <i data-lucide="folder-open" class="w-16 h-16 text-gray-300 mx-auto mb-4"></i>
+                            <p class="text-gray-500 text-lg">No tienes plantillas creadas aún</p>
+                            <p class="text-gray-400 text-sm mt-2">Crea tu primera plantilla para comenzar</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="border-b border-gray-200">
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Nombre</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Zona AZ</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">VMs</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Creada</th>
+                                        <th class="text-center py-3 px-4 text-sm font-semibold text-gray-700">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${templates.map(template => `
+                                        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                            <td class="py-4 px-4">
+                                                <div class="flex items-center gap-2">
+                                                    <i data-lucide="file-text" class="w-4 h-4 text-gray-400"></i>
+                                                    <span class="font-medium text-gray-800">${template.name}</span>
+                                                </div>
+                                            </td>
+                                            <td class="py-4 px-4">
+                                                <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                                    ${template.availability_zone || 'Auto'}
+                                                </span>
+                                            </td>
+                                            <td class="py-4 px-4 text-gray-600">
+                                                ${template.topology_json?.nodes?.length || 0} VMs
+                                            </td>
+                                            <td class="py-4 px-4 text-sm text-gray-600">
+                                                ${new Date(template.created_at).toLocaleString('es-ES')}
+                                            </td>
+                                            <td class="py-4 px-4">
+                                                <div class="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onclick="editTemplate('${template._id}')"
+                                                        class="group p-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-600 hover:text-white transition-all duration-300 transform hover:scale-110 hover:shadow-lg"
+                                                        title="Editar"
+                                                    >
+                                                        <i data-lucide="edit-2" class="w-4 h-4"></i>
+                                                    </button>
+                                                    <button
+                                                        onclick="deployTemplate('${template._id}', '${template.name}')"
+                                                        class="group p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-600 hover:text-white transition-all duration-300 transform hover:scale-110 hover:shadow-lg hover:rotate-12"
+                                                        title="Desplegar"
+                                                    >
+                                                        <i data-lucide="rocket" class="w-4 h-4"></i>
+                                                    </button>
+                                                    <button
+                                                        onclick="deleteTemplate('${template._id}', '${template.name}')"
+                                                        class="group p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-600 hover:text-white transition-all duration-300 transform hover:scale-110 hover:shadow-lg"
+                                                        title="Eliminar"
+                                                    >
+                                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Error loading templates:', error);
+                document.getElementById('templates-container').innerHTML = `
+                    <div class="text-center py-12">
+                        <i data-lucide="alert-circle" class="w-16 h-16 text-red-300 mx-auto mb-4"></i>
+                        <p class="text-red-500 text-lg">Error al cargar plantillas</p>
+                    </div>
+                `;
+                lucide.createIcons();
+            }
+        }
+
+        // Cargar slices
+        async function loadSlices() {
+            try {
+                const response = await fetch('/api/slices', {
+                    headers: getAuthHeaders()
+                });
+
+                if (!response.ok) {
+                    throw new Error('Error al cargar slices');
+                }
+
+                const data = await response.json();
+                const slices = data.slices || [];
+
+                // Actualizar contador
+                document.getElementById('slices-count').textContent = slices.length;
+                document.getElementById('slices-count-text').textContent = `${slices.length} slice(s) activo(s)`;
+
+                const container = document.getElementById('slices-container');
+
+                if (slices.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-12">
+                            <i data-lucide="server" class="w-16 h-16 text-gray-300 mx-auto mb-4"></i>
+                            <p class="text-gray-500 text-lg">No tienes slices desplegados</p>
+                            <p class="text-gray-400 text-sm mt-2">Despliega una plantilla para comenzar</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="border-b border-gray-200">
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Nombre</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Slice ID</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Zona AZ</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">VMs</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Estado</th>
+                                        <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Desplegado</th>
+                                        <th class="text-center py-3 px-4 text-sm font-semibold text-gray-700">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${slices.map(slice => `
+                                        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                            <td class="py-4 px-4">
+                                                <div class="flex items-center gap-2">
+                                                    <i data-lucide="layers" class="w-4 h-4 text-gray-400"></i>
+                                                    <span class="font-medium text-gray-800">${slice.name}</span>
+                                                </div>
+                                            </td>
+                                            <td class="py-4 px-4">
+                                                <code class="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600">${slice.slice_id}</code>
+                                            </td>
+                                            <td class="py-4 px-4">
+                                                <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                                    ${slice.availability_zone || 'Auto'}
+                                                </span>
+                                            </td>
+                                            <td class="py-4 px-4 text-gray-600">${slice.vm_count} VMs</td>
+                                            <td class="py-4 px-4">
+                                                ${slice.status === 'active' ? `
+                                                    <span class="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-1 w-fit">
+                                                        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                                        Activo
+                                                    </span>
+                                                ` : slice.status === 'stopped' ? `
+                                                    <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                                                        Detenido
+                                                    </span>
+                                                ` : `
+                                                    <span class="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                                                        Error
+                                                    </span>
+                                                `}
+                                            </td>
+                                            <td class="py-4 px-4 text-sm text-gray-600">
+                                                ${new Date(slice.deployed_at).toLocaleString('es-ES')}
+                                            </td>
+                                            <td class="py-4 px-4">
+                                                <div class="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onclick="viewSlice('${slice._id}')"
+                                                        class="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-600 hover:text-white transition-all duration-300 flex items-center gap-1 text-sm font-medium"
+                                                        title="Visualizar"
+                                                    >
+                                                        <i data-lucide="eye" class="w-4 h-4"></i>
+                                                        Visualizar
+                                                    </button>
+                                                    <button
+                                                        onclick="deleteSlice('${slice.slice_id}', '${slice.name}')"
+                                                        class="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-600 hover:text-white transition-all duration-300 flex items-center gap-1 text-sm font-medium"
+                                                        title="Eliminar"
+                                                    >
+                                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                        Eliminar
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Error loading slices:', error);
+                document.getElementById('slices-container').innerHTML = `
+                    <div class="text-center py-12">
+                        <i data-lucide="alert-circle" class="w-16 h-16 text-red-300 mx-auto mb-4"></i>
+                        <p class="text-red-500 text-lg">Error al cargar slices</p>
+                    </div>
+                `;
+                lucide.createIcons();
+            }
+        }
+
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+
+            notification.className = `${bgColor} text-white px-6 py-4 rounded-lg shadow-lg flex items-center gap-3`;
+            notification.innerHTML = `
+                <i data-lucide="${type === 'success' ? 'check-circle' : 'alert-circle'}" class="w-5 h-5"></i>
+                <span>${message}</span>
+            `;
+            notification.classList.remove('hidden');
+            lucide.createIcons();
+
+            setTimeout(() => {
+                notification.classList.add('hidden');
+            }, 3000);
+        }
+
+        function editTemplate(templateId) {
+            window.location.href = `/editor?template_id=${templateId}`;
+        }
+
+        async function deployTemplate(templateId, templateName) {
+            if (!confirm(`¿Desplegar la plantilla "${templateName}"?`)) return;
+
+            try {
+                const response = await fetch(`/api/templates/${templateId}/deploy`, {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showNotification('Slice desplegado exitosamente', 'success');
+                    setTimeout(() => {
+                        loadTemplates();
+                        loadSlices();
+                    }, 1500);
+                } else {
+                    showNotification(data.detail || data.error || 'Error al desplegar', 'error');
+                }
+            } catch (error) {
+                showNotification('Error al desplegar el slice', 'error');
+            }
+        }
+
+        async function deleteTemplate(templateId, templateName) {
+            if (!confirm(`¿Eliminar la plantilla "${templateName}"? Esta acción no se puede deshacer.`)) return;
+
+            try {
+                const response = await fetch(`/api/templates/${templateId}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showNotification('Plantilla eliminada', 'success');
+                    setTimeout(() => loadTemplates(), 1500);
+                } else {
+                    showNotification(data.detail || data.error || 'Error al eliminar', 'error');
+                }
+            } catch (error) {
+                showNotification('Error al eliminar la plantilla', 'error');
+            }
+        }
+
+        function viewSlice(sliceId) {
+            window.location.href = `/viewer?slice_id=${sliceId}`;
+        }
+
+        async function deleteSlice(sliceId, sliceName) {
+            if (!confirm(`¿Eliminar el slice "${sliceName}"? Esto liberará los recursos y VLANs.`)) return;
+
+            try {
+                const response = await fetch(`/api/slices/${sliceId}`, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showNotification('Slice eliminado', 'success');
+                    setTimeout(() => loadSlices(), 1500);
+                } else {
+                    showNotification(data.detail || data.error || 'Error al eliminar', 'error');
+                }
+            } catch (error) {
+                showNotification('Error al eliminar el slice', 'error');
+            }
+        }
+
+        // Inicializar dashboard
+        (async function() {
+            await checkAuth();
+            await loadTemplates();
+            await loadSlices();
+        })();
+    </script>
+</body>
+</html>

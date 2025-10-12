@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor de Slice - Solo Lectura</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-slate-100 p-6 min-h-screen">
+    <div class="max-w-7xl mx-auto">
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800 mb-2">Visor de Slice</h1>
+                <p class="text-gray-600">Visualización en modo solo lectura - <span id="slice-name-display" class="font-semibold text-indigo-600"></span></p>
+            </div>
+            <div class="flex items-center gap-2 px-4 py-2 bg-yellow-100 border-l-4 border-yellow-500 rounded">
+                <i data-lucide="lock" class="w-5 h-5 text-yellow-700"></i>
+                <span class="text-sm font-semibold text-yellow-700">MODO SOLO LECTURA</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+            <!-- Panel de Información (Sin Controles de Edición) -->
+            <div class="lg:col-span-1 space-y-4">
+                <!-- Información del Slice -->
+                <div class="bg-white rounded-lg shadow-lg p-4">
+                    <h3 class="font-bold text-lg mb-3 flex items-center gap-2">
+                        <i data-lucide="info" class="w-5 h-5"></i>
+                        Información del Slice
+                    </h3>
+
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Nombre</label>
+                            <p id="slice-name" class="text-sm font-semibold text-gray-800">-</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Zona de Disponibilidad</label>
+                            <p id="slice-az-display" class="text-sm font-semibold text-indigo-600">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estadísticas -->
+                <div class="bg-white rounded-lg shadow-lg p-4">
+                    <h4 class="font-bold text-sm mb-3 flex items-center gap-2">
+                        <i data-lucide="bar-chart-2" class="w-4 h-4"></i>
+                        Estadísticas
+                    </h4>
+                    <p class="text-sm text-gray-600">VMs: <span id="node-count-display" class="font-semibold">0</span></p>
+                    <p class="text-sm text-gray-600">Conexiones: <span id="edge-count-display" class="font-semibold">0</span></p>
+                </div>
+
+                <!-- Acciones Disponibles -->
+                <div class="bg-white rounded-lg shadow-lg p-4">
+                    <h3 class="font-bold text-lg mb-3">Acciones</h3>
+
+                    <div class="space-y-2">
+                        <button id="export-svg-btn" class="w-full py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors">
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                            Exportar SVG
+                        </button>
+
+                        <button id="export-png-btn" class="w-full py-2 bg-indigo-700 text-white rounded hover:bg-indigo-800 flex items-center justify-center gap-2 transition-colors">
+                            <i data-lucide="image" class="w-4 h-4"></i>
+                            Exportar PNG
+                        </button>
+
+                        <a href="/dashboard" class="w-full py-2 bg-slate-600 text-white rounded hover:bg-slate-700 flex items-center justify-center gap-2 transition-colors">
+                            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                            Volver al Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Canvas de Visualización (Sin Edición) -->
+            <div class="lg:col-span-3">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">Topología del Slice</h2>
+                    </div>
+
+                    <div class="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 svg-container" style="height: 600px; position: relative; cursor: grab;">
+                        <!-- Controles de zoom -->
+                        <div class="zoom-controls">
+                            <button id="zoom-in" class="zoom-btn" title="Acercar">+</button>
+                            <button id="zoom-out" class="zoom-btn" title="Alejar">−</button>
+                            <button id="zoom-reset" class="zoom-btn zoom-reset" title="Resetear zoom">100%</button>
+                        </div>
+
+                        <svg id="network-svg" class="w-full h-full bg-gray-50" style="width: 10000px; height: 10000px;">
+                            <!-- Las conexiones y nodos se dibujarán aquí -->
+                        </svg>
+                    </div>
+
+                    <div id="empty-state" class="text-center text-gray-400 mt-4 hidden">
+                        <p>No hay nodos en este slice</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Verificar autenticación
+        if (!localStorage.getItem('access_token')) {
+            window.location.href = '/login';
+        }
+
+        // Datos del slice desde el servidor
+        const sliceData = {{ slice_data|safe if slice_data else 'null' }};
+        const sliceId = {{ ("'" + slice_id + "'")|safe if slice_id else 'null' }};
+        const sliceName = {{ ("'" + slice_name + "'")|safe if slice_name else "'Slice sin nombre'" }};
+        const sliceAZ = {{ ("'" + (slice_az or 'Automático') + "'")|safe }};
+
+        // Mostrar nombre del slice
+        document.getElementById('slice-name-display').textContent = sliceName;
+        document.getElementById('slice-name').textContent = sliceName;
+        document.getElementById('slice-az-display').textContent = sliceAZ;
+
+        // Inicializar íconos de Lucide
+        lucide.createIcons();
+
+        // Estado de visualización (solo lectura)
+        let state = {
+            nodes: [],
+            edges: []
+        };
+
+        // Variables para zoom y pan
+        let scale = 1;
+        let translateX = 0;
+        let translateY = 0;
+        let isPanning = false;
+        let startPanX, startPanY;
+
+        // Elementos del DOM
+        const svgContainer = document.querySelector('.svg-container');
+        const svg = document.getElementById('network-svg');
+        const nodeCountDisplay = document.getElementById('node-count-display');
+        const edgeCountDisplay = document.getElementById('edge-count-display');
+
+        // Cargar datos del slice
+        function loadSliceData() {
+            if (sliceData) {
+                state.nodes = sliceData.nodes || [];
+                state.edges = sliceData.edges || [];
+                drawTopology();
+                setTimeout(() => perfectCenterTopology(), 200);
+            }
+        }
+
+        // Dibujar topología (SIN interacciones de edición)
+        function drawTopology() {
+            svg.innerHTML = '';
+
+            const svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            svgGroup.id = 'svg-content-group';
+            svgGroup.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
+
+            // Dibujar conexiones
+            state.edges.forEach(edge => {
+                const fromNode = state.nodes.find(n => n.id === edge.from);
+                const toNode = state.nodes.find(n => n.id === edge.to);
+
+                if (fromNode && toNode) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', fromNode.x);
+                    line.setAttribute('y1', fromNode.y);
+                    line.setAttribute('x2', toNode.x);
+                    line.setAttribute('y2', toNode.y);
+                    line.setAttribute('stroke', '#94a3b8');
+                    line.setAttribute('stroke-width', '2');
+                    svgGroup.appendChild(line);
+                }
+            });
+
+            // Dibujar nodos (SIN selección ni drag)
+            state.nodes.forEach(node => {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', node.x);
+                circle.setAttribute('cy', node.y);
+                circle.setAttribute('r', '30');
+                circle.setAttribute('fill', '#3b82f6');
+                circle.setAttribute('stroke', 'none');
+                circle.style.cursor = 'default'; // No es clickeable
+
+                // Tooltip con información
+                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                title.textContent = `${node.label}\n${node.flavor.vcpus} vCPU, ${node.flavor.ram}GB RAM, ${node.flavor.disk}GB Disk\nImagen: ${node.image || 'ubuntu'}\nInternet: ${node.internet_access !== false ? 'Sí' : 'No'}`;
+                circle.appendChild(title);
+
+                svgGroup.appendChild(circle);
+
+                // Icono de servidor
+                const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                foreignObject.setAttribute('x', node.x - 15);
+                foreignObject.setAttribute('y', node.y - 15);
+                foreignObject.setAttribute('width', '30');
+                foreignObject.setAttribute('height', '30');
+                foreignObject.style.pointerEvents = 'none';
+
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-center h-full';
+                div.innerHTML = '<i data-lucide="server" class="w-4 h-4 text-white"></i>';
+                foreignObject.appendChild(div);
+                svgGroup.appendChild(foreignObject);
+
+                // Etiqueta del nodo
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', node.x);
+                text.setAttribute('y', node.y + 50);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('class', 'text-xs font-semibold fill-gray-700 select-none');
+                text.textContent = node.label;
+                svgGroup.appendChild(text);
+            });
+
+            svg.appendChild(svgGroup);
+            nodeCountDisplay.textContent = state.nodes.length;
+            edgeCountDisplay.textContent = state.edges.length;
+
+            lucide.createIcons();
+        }
+
+        // Centrado perfecto de topología
+        function perfectCenterTopology() {
+            if (state.nodes.length === 0) return;
+
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+
+            state.nodes.forEach(node => {
+                minX = Math.min(minX, node.x - 40);
+                maxX = Math.max(maxX, node.x + 40);
+                minY = Math.min(minY, node.y - 40);
+                maxY = Math.max(maxY, node.y + 40);
+            });
+
+            const contentWidth = maxX - minX;
+            const contentHeight = maxY - minY;
+            const contentCenterX = (minX + maxX) / 2;
+            const contentCenterY = (minY + maxY) / 2;
+
+            const containerWidth = svgContainer.clientWidth;
+            const containerHeight = svgContainer.clientHeight;
+
+            const targetScaleX = (containerWidth * 0.7) / contentWidth;
+            const targetScaleY = (containerHeight * 0.7) / contentHeight;
+            const targetScale = Math.min(Math.max(targetScaleX, targetScaleY, 0.3), 2.5);
+
+            const targetTranslateX = (containerWidth / 2) - (contentCenterX * targetScale);
+            const targetTranslateY = (containerHeight / 2) - (contentCenterY * targetScale);
+
+            scale = targetScale;
+            translateX = targetTranslateX;
+            translateY = targetTranslateY;
+
+            applyZoom();
+        }
+
+        // Funciones de zoom y pan
+        function applyZoom() {
+            let svgGroup = svg.querySelector('#svg-content-group');
+            if (svgGroup) {
+                svgGroup.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
+            }
+            document.getElementById('zoom-reset').textContent = `${Math.round(scale * 100)}%`;
+        }
+
+        function zoomIn() {
+            scale *= 1.2;
+            applyZoom();
+        }
+
+        function zoomOut() {
+            scale /= 1.2;
+            applyZoom();
+        }
+
+        function resetZoom() {
+            perfectCenterTopology();
+        }
+
+        function handleWheel(event) {
+            event.preventDefault();
+
+            const rect = svgContainer.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+
+            const delta = -Math.sign(event.deltaY);
+            const zoomFactor = 1.1;
+
+            const newScale = delta > 0 ? scale * zoomFactor : scale / zoomFactor;
+
+            translateX -= (mouseX - translateX) * (newScale/scale - 1);
+            translateY -= (mouseY - translateY) * (newScale/scale - 1);
+
+            scale = newScale;
+            applyZoom();
+        }
+
+        function startPan(event) {
+            isPanning = true;
+            startPanX = event.clientX - translateX;
+            startPanY = event.clientY - translateY;
+            svgContainer.style.cursor = 'grabbing';
+            event.preventDefault();
+        }
+
+        function doPan(event) {
+            if (!isPanning) return;
+            translateX = event.clientX - startPanX;
+            translateY = event.clientY - startPanY;
+            applyZoom();
+        }
+
+        function stopPan() {
+            isPanning = false;
+            svgContainer.style.cursor = 'grab';
+        }
+
+        // Exportar funciones
+        function exportAsSVG() {
+            const serializer = new XMLSerializer();
+            let svgString = serializer.serializeToString(svg);
+            svgString = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + svgString;
+
+            const blob = new Blob([svgString], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `slice_${sliceName}_topology.svg`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        async function exportAsPNG() {
+            try {
+                const canvas = await html2canvas(svgContainer, {
+                    backgroundColor: '#f9fafb',
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false
+                });
+
+                const pngUrl = canvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = pngUrl;
+                a.download = `slice_${sliceName}_topology.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } catch (error) {
+                console.error('Error exporting PNG:', error);
+                alert('Error al exportar PNG: ' + error.message);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('zoom-in').addEventListener('click', zoomIn);
+        document.getElementById('zoom-out').addEventListener('click', zoomOut);
+        document.getElementById('zoom-reset').addEventListener('click', resetZoom);
+        document.getElementById('export-svg-btn').addEventListener('click', exportAsSVG);
+        document.getElementById('export-png-btn').addEventListener('click', exportAsPNG);
+
+        svgContainer.addEventListener('wheel', handleWheel, { passive: false });
+        svgContainer.addEventListener('mousedown', startPan);
+        document.addEventListener('mousemove', doPan);
+        document.addEventListener('mouseup', stopPan);
+
+        // Inicializar
+        document.addEventListener('DOMContentLoaded', function() {
+            lucide.createIcons();
+            loadSliceData();
+        });
+    </script>
+</body>
+</html>
