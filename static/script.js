@@ -74,9 +74,24 @@ document.addEventListener('DOMContentLoaded', function() {
     loadTopologyState();
     setupEventListeners();
     setupAZListeners();
-    setupSaveListener(); // Configurar el listener de guardado
+    initializeDefaultAZ(); // Nueva función para establecer AZ por defecto
     applyZoom();
 });
+
+// NUEVA FUNCIÓN: Establecer AZ por defecto al cargar la página
+async function initializeDefaultAZ() {
+    try {
+        // Establecer linux-AZ-1 como zona de disponibilidad por defecto
+        await fetch('/api/placement/az', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ az: 'linux-AZ-1' })
+        });
+        console.log('Zona de disponibilidad por defecto establecida: linux-AZ-1');
+    } catch (error) {
+        console.error('Error estableciendo AZ por defecto:', error);
+    }
+}
 
 function setupInfiniteCanvas() {
     elements.svg.setAttribute('width', '10000');
@@ -85,93 +100,6 @@ function setupInfiniteCanvas() {
     elements.svg.style.minWidth = '100%';
     elements.svg.style.minHeight = '100%';
     elements.svg.style.overflow = 'visible';
-}
-
-// Configuración del listener de guardado - SIMPLIFICADO
-function setupSaveListener() {
-    const btnGuardar = document.getElementById('btnGuardar');
-    
-    // Remover cualquier event listener existente
-    const newBtn = btnGuardar.cloneNode(true);
-    btnGuardar.parentNode.replaceChild(newBtn, btnGuardar);
-    
-    // Agregar el event listener al nuevo botón - SIN closures complejos
-    document.getElementById('btnGuardar').addEventListener('click', handleSaveTemplate);
-}
-
-// Función manejadora del guardado - SIMPLIFICADA
-async function handleSaveTemplate() {
-    const nombre = prompt("Nombre de la plantilla:", "mi_plantilla");
-    
-    // Verificar explícitamente si el usuario canceló
-    if (nombre === null) {
-        console.log('Usuario canceló el guardado');
-        return;
-    }
-    
-    // Usar nombre por defecto si está vacío
-    const nombreFinal = nombre.trim() === "" ? "mi_plantilla" : nombre;
-    
-    // Obtener AZ seleccionada
-    const azInput = document.querySelector('input[name="slice-az"]:checked');
-    const az = azInput ? azInput.value : '';
-    
-    console.log('Iniciando guardado:', { nombre: nombreFinal, az });
-
-    try {
-        const response = await fetch('/api/topology/save', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ 
-                name: nombreFinal, 
-                az: az
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            showNotification(`✅ Plantilla guardada: ${data.filename}`, 'success');
-        } else {
-            throw new Error(data.error || 'Error desconocido al guardar');
-        }
-        
-    } catch (error) {
-        console.error('Error al guardar plantilla:', error);
-        showNotification(`❌ Error al guardar: ${error.message}`, 'error');
-    }
-}
-
-// NUEVA FUNCIÓN: Configurar listeners para Availability Zone
-function setupAZListeners() {
-    const azRadios = document.querySelectorAll('input[name="slice-az"]');
-    azRadios.forEach(radio => {
-        radio.addEventListener('change', async function() {
-            const azValue = this.value;
-            
-            try {
-                const response = await fetch('/api/placement/az', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ az: azValue === "" ? null : azValue })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    showNotification(`Zona de disponibilidad establecida: ${azValue || 'Automático'}`, 'success');
-                } else {
-                    showNotification('Error al establecer AZ: ' + data.error, 'error');
-                }
-            } catch (error) {
-                console.error('Error setting AZ:', error);
-                showNotification('Error al establecer la zona de disponibilidad', 'error');
-            }
-        });
-    });
 }
 
 function setupEventListeners() {
@@ -211,6 +139,34 @@ function setupEventListeners() {
     elements.svg.addEventListener('mousemove', handleMouseMove);
     elements.svg.addEventListener('mouseup', handleMouseUp);
     elements.svg.addEventListener('mouseleave', handleMouseUp);
+}
+
+// NUEVA FUNCIÓN: Configurar listeners para Availability Zone
+function setupAZListeners() {
+    const azRadios = document.querySelectorAll('input[name="slice-az"]');
+    azRadios.forEach(radio => {
+        radio.addEventListener('change', async function() {
+            const azValue = this.value;
+            
+            try {
+                const response = await fetch('/api/placement/az', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ az: azValue === "" ? null : azValue })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showNotification(`Zona de disponibilidad establecida: ${azValue || 'Automático'}`, 'success');
+                } else {
+                    showNotification('Error al establecer AZ: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error setting AZ:', error);
+                showNotification('Error al establecer la zona de disponibilidad', 'error');
+            }
+        });
+    });
 }
 
 // Función para manejar clic en SVG
@@ -533,13 +489,13 @@ function toggleConnectMode() {
     if (state.connectMode) {
         elements.connectBtn.textContent = 'Cancelar Conexión';
         elements.connectBtn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
-        elements.connectBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+        elements.connectBtn.classList.add('bg-red-600', 'hover:bg-red-700');
         elements.connectModeIndicator.classList.remove('hidden');
         updateConnectStep();
         showNotification('Modo conexión activado. Selecciona la VM de origen.', 'info');
     } else {
         elements.connectBtn.textContent = 'Conectar VMs';
-        elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+        elements.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
         elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
         elements.connectModeIndicator.classList.add('hidden');
         showNotification('Modo conexión desactivado', 'info');
@@ -849,8 +805,8 @@ document.getElementById('file-input').addEventListener('change', async (event) =
             if (radioButton) {
                 radioButton.checked = true;
             } else {
-                // Si no encuentra la AZ, seleccionar Automático
-                document.querySelector('input[name="slice-az"][value=""]').checked = true;
+                // Si no encuentra la AZ, seleccionar linux-AZ-1 por defecto
+                document.querySelector('input[name="slice-az"][value="linux-AZ-1"]').checked = true;
             }
             
             showNotification('Plantilla cargada exitosamente', 'success');

@@ -6,6 +6,7 @@
     <title>Constructor de Topologías de Red - Flask</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="bg-gradient-to-br from-slate-50 to-slate-100 p-6 min-h-screen">
@@ -30,7 +31,8 @@
                         <option value="mesh">Malla</option>
                     </select>
 
-                    <div id="tree-config" class="space-y-3">
+                    <!-- Configuración de Árbol -->
+                    <div id="tree-config" class="space-y-3 mb-3">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
                                 Niveles: <span id="tree-levels-value">3</span>
@@ -48,7 +50,15 @@
                         </p>
                     </div>
 
-                    <!-- AZ del Slice (una sola) -->
+                    <!-- Configuración para otras topologías (Estrella, Anillo, etc.) -->
+                    <div id="other-config" class="mb-3 hidden">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Número de VMs: <span id="node-count-value">5</span>
+                        </label>
+                        <input id="node-count" type="range" min="3" max="8" value="5" class="w-full">
+                    </div>
+
+                    <!-- Zona de disponibilidad (AHORA ABAJO DE LAS CONFIGURACIONES) -->
                     <div class="mt-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                             <i data-lucide="map-pin" class="w-4 h-4"></i>
@@ -57,11 +67,11 @@
 
                         <div class="space-y-2" id="az-radio-group">
                             <label class="flex items-center gap-2">
-                                <input type="radio" name="slice-az" value="" checked>
+                                <input type="radio" name="slice-az" value="">
                                 <span class="text-sm text-gray-700">Automático</span>
                             </label>
                             <label class="flex items-center gap-2">
-                                <input type="radio" name="slice-az" value="linux-AZ-1">
+                                <input type="radio" name="slice-az" value="linux-AZ-1" checked>
                                 <span class="text-sm text-gray-700">linux-AZ-1</span>
                             </label>
                             <label class="flex items-center gap-2">
@@ -70,19 +80,16 @@
                             </label>
                             <label class="flex items-center gap-2 opacity-50 cursor-not-allowed">
                                 <input type="radio" name="slice-az" value="openstack-AZ-1" disabled>
-                                <span class="text-sm text-gray-700">openstack-AZ-1 (próximamente)</span>
+                                <span class="text-sm text-gray-700">openstack-AZ-1</span>
+                            </label>
+                            <label class="flex items-center gap-2 opacity-50 cursor-not-allowed">
+                                <input type="radio" name="slice-az" value="openstack-AZ-1" disabled>
+                                <span class="text-sm text-gray-700">openstack-AZ-2</span>
                             </label>
                         </div>
                     </div>
 
-                    <div id="other-config" class="mb-3 hidden">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">
-                            Número de VMs: <span id="node-count-value">5</span>
-                        </label>
-                        <input id="node-count" type="range" min="3" max="8" value="5" class="w-full">
-                    </div>
-
-                    <button id="generate-btn" class="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold transition-colors">
+                    <button id="generate-btn" class="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold transition-colors mt-4">
                         Generar Topología
                     </button>
                 </div>
@@ -90,12 +97,10 @@
                 <div class="bg-white rounded-lg shadow-lg p-4">
                     <h3 class="font-bold text-lg mb-3">Acciones Globales</h3>
 
-                    <div class="mb-4 flex gap-2">
-                        <button id="load-json" class="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700">
-                            Cargar JSON
-                        </button>
-                        <input type="file" id="file-input" accept=".json" class="hidden">
-                    </div>
+                    <button id="load-json" class="w-full py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 mb-2 flex items-center justify-center gap-2 transition-colors">
+                        Cargar JSON
+                    </button>
+                    <input type="file" id="file-input" accept=".json" class="hidden">
                     
                     <button id="add-node-btn" class="w-full py-2 bg-green-600 text-white rounded hover:bg-green-700 mb-2 flex items-center justify-center gap-2 transition-colors">
                         <i data-lucide="plus" class="w-4 h-4"></i>
@@ -361,6 +366,38 @@
             document.getElementById('selected-vm-panel').classList.remove('hidden');
         };
 
+        // Guardar plantilla - CORREGIDO
+        document.getElementById('btnGuardar').addEventListener('click', async () => {
+            const nombre = prompt("Nombre de la plantilla:", "mi_plantilla");
+            
+            // Si el usuario cancela (null) o cierra el prompt, no hacer nada
+            if (nombre === null) {
+                return;
+            }
+            
+            // Si el usuario no escribe nada, usar "mi_plantilla"
+            const nombreFinal = nombre.trim() === "" ? "mi_plantilla" : nombre;
+            
+            // Obtener AZ seleccionada
+            const az = document.querySelector('input[name="slice-az"]:checked').value;
+
+            try {
+                const res = await fetch('/api/topology/save', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ 
+                        name: nombreFinal, 
+                        az: az
+                    })
+                });
+                if (!res.ok) throw new Error('Error al guardar');
+                const data = await res.json();
+                showNotification(`Guardado ✅\nArchivo: ${data.filename}`, 'success');
+            } catch (e) {
+                showNotification('❌ No se pudo guardar: ' + e.message, 'error');
+            }
+        });
+
         // Exportar JSON
         document.getElementById('export-json-btn').addEventListener('click', async () => {
             try {
@@ -453,40 +490,36 @@
             showNotification('SVG exportado exitosamente', 'success');
         }
 
-        function exportAsPNG() {
-            const svgElement = document.getElementById('network-svg');
-            const serializer = new XMLSerializer();
-            let svgString = serializer.serializeToString(svgElement);
-            
-            // Añadir declaración XML
-            svgString = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + svgString;
-            
-            // Crear canvas para convertir SVG a PNG
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const svgBlob = new Blob([svgString], { type: 'image/svg+xml' });
-            const url = URL.createObjectURL(svgBlob);
-            
-            const img = new Image();
-            img.onload = function() {
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.drawImage(img, 0, 0);
+        // FUNCIÓN CORREGIDA para exportar PNG usando html2canvas
+        async function exportAsPNG() {
+            try {
+                const svgContainer = document.querySelector('.svg-container');
                 
-                // Descargar PNG
+                // Usar html2canvas para capturar el contenedor SVG
+                const canvas = await html2canvas(svgContainer, {
+                    backgroundColor: '#f9fafb', // bg-gray-50
+                    scale: 2, // Mayor resolución
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false
+                });
+                
+                // Convertir canvas a Data URL
                 const pngUrl = canvas.toDataURL('image/png');
+                
+                // Crear enlace de descarga
                 const a = document.createElement('a');
                 a.href = pngUrl;
                 a.download = 'topology.png';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
-                URL.revokeObjectURL(url);
                 
                 showNotification('PNG exportado exitosamente', 'success');
-            };
-            
-            img.src = url;
+            } catch (error) {
+                console.error('Error exporting PNG:', error);
+                showNotification('Error al exportar PNG: ' + error.message, 'error');
+            }
         }
     </script>
 
