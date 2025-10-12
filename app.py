@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 import os
 import tempfile
+import random
 
 app = Flask(__name__)
 
@@ -15,22 +16,77 @@ class NetworkTopology:
         self.topology_count = 0
         self.placement_az = None
     
+    def _validate_flavor(self, flavor):
+        """Valida que el flavor cumpla con los límites"""
+        if not flavor:
+            return True, ""
+            
+        vcpus = flavor.get('vcpus')
+        ram = flavor.get('ram')
+        disk = flavor.get('disk')
+        
+        # Validar vCPUs (1-4 enteros)
+        if vcpus is not None:
+            try:
+                vcpus = int(vcpus)
+                if vcpus < 1 or vcpus > 4:
+                    return False, "vCPUs debe estar entre 1 y 4"
+            except (ValueError, TypeError):
+                return False, "vCPUs debe ser un número entero"
+        
+        # Validar RAM (0.5-4 GB, múltiplos de 0.5)
+        if ram is not None:
+            try:
+                ram = float(ram)
+                if ram < 0.5 or ram > 4 or (ram * 2) % 1 != 0:
+                    return False, "RAM debe estar entre 0.5 y 4 GB (múltiplos de 0.5)"
+            except (ValueError, TypeError):
+                return False, "RAM debe ser un número"
+        
+        # Validar Disco (1-10 GB enteros)
+        if disk is not None:
+            try:
+                disk = int(disk)
+                if disk < 1 or disk > 10:
+                    return False, "Disco debe estar entre 1 y 10 GB"
+            except (ValueError, TypeError):
+                return False, "Disco debe ser un número entero"
+                
+        return True, ""
+
+    def _get_random_position_near_existing(self):
+        """Obtiene una posición aleatoria cerca de las VMs existentes"""
+        if not self.nodes:
+            return 5000 + random.randint(-100, 100), 5000 + random.randint(-100, 100)
+        
+        avg_x = sum(node['x'] for node in self.nodes) / len(self.nodes)
+        avg_y = sum(node['y'] for node in self.nodes) / len(self.nodes)
+        
+        x = avg_x + random.randint(-150, 150)
+        y = avg_y + random.randint(-150, 150)
+        
+        return x, y
+
     def generate_topology(self, topology_type, config, flavor=None):
         """Genera una topología específica y la AGREGA a la existente"""
         if flavor is None:
-            flavor = {'vcpus': 2, 'ram': 2, 'disk': 20}
+            flavor = {'vcpus': 1, 'ram': 0.5, 'disk': 1}
+        else:
+            is_valid, error_msg = self._validate_flavor(flavor)
+            if not is_valid:
+                raise ValueError(f"Flavor inválido: {error_msg}")
             
         self.topology_count += 1
         
-        grid_size = 3
+        grid_size = 2
         col = (self.topology_count - 1) % grid_size
         row = (self.topology_count - 1) // grid_size
         
-        spacing_x = 250
-        spacing_y = 200
+        spacing_x = 150
+        spacing_y = 120
         
-        base_x = 200 + col * spacing_x
-        base_y = 150 + row * spacing_y
+        base_x = 5000 + col * spacing_x - spacing_x
+        base_y = 5000 + row * spacing_y - spacing_y
         
         new_nodes = []
         new_edges = []
@@ -48,7 +104,8 @@ class NetworkTopology:
                     'y': base_y, 
                     'label': f'VM-{next_id}',
                     'flavor': flavor.copy(),
-                    'az': self.placement_az
+                    'image': 'ubuntu',
+                    'internet_access': False
                 },
                 {
                     'id': next_id + 1, 
@@ -56,7 +113,8 @@ class NetworkTopology:
                     'y': base_y, 
                     'label': f'VM-{next_id + 1}',
                     'flavor': flavor.copy(),
-                    'az': self.placement_az
+                    'image': 'ubuntu',
+                    'internet_access': False
                 }
             ]
             new_edges = [{'from': next_id, 'to': next_id + 1}]
@@ -70,7 +128,8 @@ class NetworkTopology:
                 'y': base_y, 
                 'label': f'VM-{central_id}',
                 'flavor': flavor.copy(),
-                'az': self.placement_az
+                'image': 'ubuntu',
+                'internet_access': False
             }]
             
             node_count = config.get('node_count', 5)
@@ -83,7 +142,8 @@ class NetworkTopology:
                     'y': base_y + radius * math.sin(angle),
                     'label': f'VM-{new_id}',
                     'flavor': flavor.copy(),
-                    'az': self.placement_az
+                    'image': 'ubuntu',
+                    'internet_access': False
                 })
                 new_edges.append({'from': central_id, 'to': new_id})
             
@@ -99,7 +159,8 @@ class NetworkTopology:
                     'y': base_y + radius * math.sin(angle),
                     'label': f'VM-{new_id}',
                     'flavor': flavor.copy(),
-                    'az': self.placement_az
+                    'image': 'ubuntu',
+                    'internet_access': False
                 })
                 if i < node_count - 1:
                     new_edges.append({'from': new_id, 'to': new_id + 1})
@@ -117,7 +178,8 @@ class NetworkTopology:
                 'y': base_y, 
                 'label': f'VM-{root_id}',
                 'flavor': flavor.copy(),
-                'az': self.placement_az
+                'image': 'ubuntu',
+                'internet_access': False
             })
             current_level = [{'id': root_id, 'x': base_x, 'y': base_y}]
             current_id = next_id + 1
@@ -125,8 +187,8 @@ class NetworkTopology:
             for level in range(1, levels):
                 next_level = []
                 nodes_in_level = len(current_level) * branching
-                spacing = min(200, 300 / max(1, nodes_in_level))
-                y = base_y + level * 80
+                spacing = min(150, 250 / max(1, nodes_in_level))
+                y = base_y + level * 60
                 
                 for parent_idx, parent in enumerate(current_level):
                     for i in range(branching):
@@ -141,7 +203,8 @@ class NetworkTopology:
                             'y': y,
                             'label': f'VM-{current_id}',
                             'flavor': flavor.copy(),
-                            'az': self.placement_az
+                            'image': 'ubuntu',
+                            'internet_access': False
                         })
                         new_edges.append({'from': parent['id'], 'to': current_id})
                         next_level.append({'id': current_id, 'x': x, 'y': y})
@@ -151,24 +214,25 @@ class NetworkTopology:
                 
         elif topology_type == "bus":
             node_count = config.get('node_count', 5)
-            bus_spacing = 120 / max(1, node_count - 1)
+            bus_spacing = 100 / max(1, node_count - 1)
             
             for i in range(node_count):
                 new_id = next_id + i
                 new_nodes.append({
                     'id': new_id,
-                    'x': base_x - 60 + bus_spacing * i,
+                    'x': base_x - 50 + bus_spacing * i,
                     'y': base_y,
                     'label': f'VM-{new_id}',
                     'flavor': flavor.copy(),
-                    'az': self.placement_az
+                    'image': 'ubuntu',
+                    'internet_access': False
                 })
                 if i > 0:
                     new_edges.append({'from': new_id - 1, 'to': new_id})
                     
         elif topology_type == "mesh":
             node_count = config.get('node_count', 5)
-            mesh_radius = 60
+            mesh_radius = 50
             
             for i in range(node_count):
                 angle = (i * 2 * math.pi) / node_count
@@ -179,7 +243,8 @@ class NetworkTopology:
                     'y': base_y + mesh_radius * math.sin(angle),
                     'label': f'VM-{new_id}',
                     'flavor': flavor.copy(),
-                    'az': self.placement_az
+                    'image': 'ubuntu',
+                    'internet_access': False
                 })
             
             for i in range(node_count):
@@ -192,10 +257,17 @@ class NetworkTopology:
         if self.nodes:
             self.next_id = max(node['id'] for node in self.nodes) + 1
     
-    def add_node(self, x, y, flavor=None):
+    def add_node(self, x=None, y=None, flavor=None, image='ubuntu', internet_access=False):
         """Agrega un nuevo nodo en la posición especificada con flavor"""
         if flavor is None:
-            flavor = {'vcpus': 2, 'ram': 2, 'disk': 20}
+            flavor = {'vcpus': 1, 'ram': 0.5, 'disk': 1}
+        else:
+            is_valid, error_msg = self._validate_flavor(flavor)
+            if not is_valid:
+                raise ValueError(f"Flavor inválido: {error_msg}")
+        
+        if x is None or y is None:
+            x, y = self._get_random_position_near_existing()
         
         new_node = {
             'id': self.next_id,
@@ -203,7 +275,8 @@ class NetworkTopology:
             'y': y,
             'label': f'VM-{self.next_id}',
             'flavor': flavor.copy(),
-            'az': self.placement_az
+            'image': image,
+            'internet_access': internet_access
         }
         self.nodes.append(new_node)
         self.next_id += 1
@@ -243,11 +316,19 @@ class NetworkTopology:
                 node['y'] = y
                 break
     
-    def update_node_flavor(self, node_id, flavor):
-        """Actualiza el flavor de un nodo específico"""
+    def update_node_flavor(self, node_id, flavor, image=None, internet_access=None):
+        """Actualiza el flavor, imagen y acceso a internet de un nodo específico"""
+        is_valid, error_msg = self._validate_flavor(flavor)
+        if not is_valid:
+            raise ValueError(f"Flavor inválido: {error_msg}")
+            
         for node in self.nodes:
             if node['id'] == node_id:
                 node['flavor'] = flavor.copy()
+                if image is not None:
+                    node['image'] = image
+                if internet_access is not None:
+                    node['internet_access'] = internet_access
                 break
     
     def set_placement_az(self, az):
@@ -278,7 +359,8 @@ class NetworkTopology:
             
             self.topology_count = 0
             
-            az = template_data.get('availability_zone')
+            metadata = template_data.get('metadata', {})
+            az = metadata.get('availability_zone')
             if az:
                 self.placement_az = az
                 
@@ -357,18 +439,14 @@ def save_topology():
     try:
         data = request.json
         name = data.get('name', 'topology')
-        format_type = data.get('format', 'full')
-        flavor = data.get('flavor', {})
         az = data.get('az', '')
         
         template_data = {
             'metadata': {
                 'name': name,
                 'created_at': datetime.now().isoformat(),
-                'format': format_type
+                'availability_zone': az
             },
-            'flavor_defaults': flavor,
-            'availability_zone': az,
             'topology': {
                 'nodes': topology.nodes,
                 'edges': topology.edges
@@ -394,8 +472,50 @@ def save_topology():
             'error': str(e)
         })
 
+@app.route('/api/topology/export-json', methods=['GET'])
+def export_topology_json():
+    """Exporta la topología actual como JSON para descargar"""
+    try:
+        # Obtener la AZ actual - usar la de la topología global
+        current_az = topology.placement_az if topology.placement_az else ""
+        
+        template_data = {
+            'metadata': {
+                'name': 'topology_export',
+                'created_at': datetime.now().isoformat(),
+                'availability_zone': current_az
+            },
+            'topology': topology.get_state()
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': template_data
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/topology/save-db', methods=['POST'])
+def save_topology_db():
+    """Guarda la topología en base de datos (placeholder para futura implementación)"""
+    try:
+        return jsonify({
+            'success': True,
+            'message': 'Funcionalidad de guardado en base de datos estará disponible próximamente',
+            'note': 'Por ahora use "Guardar plantilla" para guardar en archivo JSON'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
 @app.route('/api/topology/load', methods=['POST'])
 def load_topology():
+    """Carga una topología desde un archivo JSON"""
     try:
         if 'file' not in request.files:
             return jsonify({'success': False, 'error': 'No file provided'})
@@ -411,7 +531,8 @@ def load_topology():
             if success:
                 return jsonify({
                     'success': True,
-                    'topology': topology.get_state()
+                    'topology': topology.get_state(),
+                    'availability_zone': topology.placement_az  # Devolver la AZ cargada
                 })
             else:
                 return jsonify({'success': False, 'error': 'Error processing template'})
@@ -424,16 +545,23 @@ def load_topology():
 def add_node():
     try:
         data = request.json
-        x = data.get('x', 400)
-        y = data.get('y', 300)
+        x = data.get('x')
+        y = data.get('y')
         flavor = data.get('flavor', None)
+        image = data.get('image', 'ubuntu')
+        internet_access = data.get('internet_access', False)
         
-        new_node = topology.add_node(x, y, flavor)
+        new_node = topology.add_node(x, y, flavor, image, internet_access)
         
         return jsonify({
             'success': True,
             'node': new_node,
             'topology': topology.get_state()
+        })
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
         })
     except Exception as e:
         return jsonify({
@@ -481,9 +609,11 @@ def update_node_flavor(node_id):
     try:
         data = request.json
         flavor = data.get('flavor')
+        image = data.get('image')
+        internet_access = data.get('internet_access')
         
         if flavor:
-            topology.update_node_flavor(node_id, flavor)
+            topology.update_node_flavor(node_id, flavor, image, internet_access)
             
             return jsonify({
                 'success': True,
@@ -493,6 +623,11 @@ def update_node_flavor(node_id):
         return jsonify({
             'success': False,
             'error': 'No flavor provided'
+        })
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
         })
     except Exception as e:
         return jsonify({

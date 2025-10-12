@@ -68,9 +68,9 @@
                                 <input type="radio" name="slice-az" value="linux-AZ-2">
                                 <span class="text-sm text-gray-700">linux-AZ-2</span>
                             </label>
-                            <label class="flex items-center gap-2">
-                                <input type="radio" name="slice-az" value="openstack-AZ-1">
-                                <span class="text-sm text-gray-700">openstack-AZ-1</span>
+                            <label class="flex items-center gap-2 opacity-50 cursor-not-allowed">
+                                <input type="radio" name="slice-az" value="openstack-AZ-1" disabled>
+                                <span class="text-sm text-gray-700">openstack-AZ-1 (próximamente)</span>
                             </label>
                         </div>
                     </div>
@@ -107,16 +107,23 @@
                         Conectar VMs
                     </button>
 
-                    <!-- Exportar como imagen -->
-                    <div class="mb-2 flex gap-2">
-                        <button id="export-svg-btn" class="flex-1 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors">
-                            <i data-lucide="download" class="w-4 h-4"></i>
-                            Exportar SVG
+                    <!-- Exportar opciones -->
+                    <div class="space-y-2 mb-2">
+                        <button id="export-json-btn" class="w-full py-2 bg-teal-600 text-white rounded hover:bg-teal-700 flex items-center justify-center gap-2 transition-colors">
+                            <i data-lucide="file-json" class="w-4 h-4"></i>
+                            Exportar JSON
                         </button>
-                        <button id="export-png-btn" class="flex-1 py-2 bg-indigo-700 text-white rounded hover:bg-indigo-800 flex items-center justify-center gap-2 transition-colors">
-                            <i data-lucide="image" class="w-4 h-4"></i>
-                            Exportar PNG
-                        </button>
+                        
+                        <div class="flex gap-2">
+                            <button id="export-svg-btn" class="flex-1 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors">
+                                <i data-lucide="download" class="w-4 h-4"></i>
+                                Exportar SVG
+                            </button>
+                            <button id="export-png-btn" class="flex-1 py-2 bg-indigo-700 text-white rounded hover:bg-indigo-800 flex items-center justify-center gap-2 transition-colors">
+                                <i data-lucide="image" class="w-4 h-4"></i>
+                                Exportar PNG
+                            </button>
+                        </div>
                     </div>
 
                     <button id="clear-btn" class="w-full py-2 bg-gray-600 text-white rounded hover:bg-gray-700 mb-2 flex items-center justify-center gap-2 transition-colors">
@@ -124,10 +131,18 @@
                         Limpiar Todo
                     </button>
 
-                    <button id="btnGuardar" class="w-full py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 mb-2 flex items-center justify-center gap-2 transition-colors">
-                        <i data-lucide="save" class="w-4 h-4"></i>
-                        Guardar plantilla
-                    </button>
+                    <!-- Botones de guardado -->
+                    <div class="space-y-2">
+                        <button id="btnGuardar" class="w-full py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            Guardar plantilla
+                        </button>
+                        
+                        <button id="save-db-btn" class="w-full py-2 bg-pink-600 text-white rounded hover:bg-pink-700 flex items-center justify-center gap-2 transition-colors">
+                            <i data-lucide="database" class="w-4 h-4"></i>
+                            Guardar en BD
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Panel de Configuración de VM Seleccionada -->
@@ -139,45 +154,47 @@
                     
                     <div class="space-y-3 mb-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">vCPUs</label>
-                            <select id="selected-vm-vcpus" class="w-full p-2 border border-gray-300 rounded text-sm">
-                                <option value="1">1 vCPU</option>
-                                <option value="2" selected>2 vCPUs</option>
-                                <option value="4">4 vCPUs</option>
-                                <option value="8">8 vCPUs</option>
-                            </select>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">vCPUs (1-4)</label>
+                            <input type="number" id="selected-vm-vcpus" min="1" max="4" step="1" 
+                                class="w-full p-2 border border-gray-300 rounded text-sm" 
+                                placeholder="1, 2, 3, 4">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">RAM (GB)</label>
-                            <select id="selected-vm-ram" class="w-full p-2 border border-gray-300 rounded text-sm">
-                                <option value="1">1 GB</option>
-                                <option value="2" selected>2 GB</option>
-                                <option value="4">4 GB</option>
-                                <option value="8">8 GB</option>
-                                <option value="16">16 GB</option>
-                            </select>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">RAM GB (0.5-4)</label>
+                            <input type="number" id="selected-vm-ram" min="0.5" max="4" step="0.5" 
+                                class="w-full p-2 border border-gray-300 rounded text-sm" 
+                                placeholder="0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4">
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Disco (GB)</label>
-                            <select id="selected-vm-disk" class="w-full p-2 border border-gray-300 rounded text-sm">
-                                <option value="10">10 GB</option>
-                                <option value="20" selected>20 GB</option>
-                                <option value="40">40 GB</option>
-                                <option value="80">80 GB</option>
-                                <option value="160">160 GB</option>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Disco GB (1-10)</label>
+                            <input type="number" id="selected-vm-disk" min="1" max="10" step="1" 
+                                class="w-full p-2 border border-gray-300 rounded text-sm" 
+                                placeholder="1, 2, 3, 4, 5, 6, 7, 8, 9, 10">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Imagen</label>
+                            <select id="selected-vm-image" class="w-full p-2 border border-gray-300 rounded text-sm">
+                                <option value="ubuntu">Ubuntu</option>
+                                <option value="cirros">Cirros</option>
                             </select>
+                        </div>
+                        
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="selected-vm-internet" class="rounded border-gray-300">
+                            <label class="text-sm font-medium text-gray-700">Acceso a Internet</label>
                         </div>
                         
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Flavors Predefinidos</label>
                             <select id="selected-vm-flavor-preset" class="w-full p-2 border border-gray-300 rounded text-sm">
                                 <option value="custom">Personalizado</option>
-                                <option value="small">Small (1vCPU, 2GB RAM, 20GB Disk)</option>
-                                <option value="medium" selected>Medium (2vCPU, 4GB RAM, 40GB Disk)</option>
-                                <option value="large">Large (4vCPU, 8GB RAM, 80GB Disk)</option>
-                                <option value="xlarge">X-Large (8vCPU, 16GB RAM, 160GB Disk)</option>
+                                <option value="small">Small (1vCPU, 0.5GB RAM, 1GB Disk)</option>
+                                <option value="medium">Medium (2vCPU, 1GB RAM, 2GB Disk)</option>
+                                <option value="large">Large (3vCPU, 1.5GB RAM, 3GB Disk)</option>
+                                <option value="xlarge">X-Large (4vCPU, 2GB RAM, 4GB Disk)</option>
                             </select>
                         </div>
                     </div>
@@ -241,43 +258,32 @@
         // Manejo de flavors predefinidos PARA VM SELECCIONADA
         document.getElementById('selected-vm-flavor-preset').addEventListener('change', function() {
             const preset = this.value;
-            const vcpusSelect = document.getElementById('selected-vm-vcpus');
-            const ramSelect = document.getElementById('selected-vm-ram');
-            const diskSelect = document.getElementById('selected-vm-disk');
+            const vcpusInput = document.getElementById('selected-vm-vcpus');
+            const ramInput = document.getElementById('selected-vm-ram');
+            const diskInput = document.getElementById('selected-vm-disk');
 
             switch(preset) {
                 case 'small':
-                    vcpusSelect.value = '1';
-                    ramSelect.value = '2';
-                    diskSelect.value = '20';
+                    vcpusInput.value = '1';
+                    ramInput.value = '0.5';
+                    diskInput.value = '1';
                     break;
                 case 'medium':
-                    vcpusSelect.value = '2';
-                    ramSelect.value = '4';
-                    diskSelect.value = '40';
+                    vcpusInput.value = '2';
+                    ramInput.value = '1';
+                    diskInput.value = '2';
                     break;
                 case 'large':
-                    vcpusSelect.value = '4';
-                    ramSelect.value = '8';
-                    diskSelect.value = '80';
+                    vcpusInput.value = '3';
+                    ramInput.value = '1.5';
+                    diskInput.value = '3';
                     break;
                 case 'xlarge':
-                    vcpusSelect.value = '8';
-                    ramSelect.value = '16';
-                    diskSelect.value = '160';
+                    vcpusInput.value = '4';
+                    ramInput.value = '2';
+                    diskInput.value = '4';
                     break;
             }
-        });
-
-        // Actualizar cuando cambian los selects individuales DE VM SELECCIONADA
-        document.getElementById('selected-vm-vcpus').addEventListener('change', function() {
-            document.getElementById('selected-vm-flavor-preset').value = 'custom';
-        });
-        document.getElementById('selected-vm-ram').addEventListener('change', function() {
-            document.getElementById('selected-vm-flavor-preset').value = 'custom';
-        });
-        document.getElementById('selected-vm-disk').addEventListener('change', function() {
-            document.getElementById('selected-vm-flavor-preset').value = 'custom';
         });
 
         // Botón para actualizar flavor de VM seleccionada
@@ -285,10 +291,13 @@
             if (!currentSelectedNodeId) return;
 
             const flavor = {
-                vcpus: document.getElementById('selected-vm-vcpus').value,
-                ram: document.getElementById('selected-vm-ram').value,
-                disk: document.getElementById('selected-vm-disk').value
+                vcpus: parseInt(document.getElementById('selected-vm-vcpus').value),
+                ram: parseFloat(document.getElementById('selected-vm-ram').value),
+                disk: parseInt(document.getElementById('selected-vm-disk').value)
             };
+
+            const image = document.getElementById('selected-vm-image').value;
+            const internet_access = document.getElementById('selected-vm-internet').checked;
 
             try {
                 const response = await fetch(`/api/nodes/${currentSelectedNodeId}/flavor`, {
@@ -296,7 +305,11 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ flavor })
+                    body: JSON.stringify({ 
+                        flavor,
+                        image,
+                        internet_access
+                    })
                 });
 
                 const data = await response.json();
@@ -322,23 +335,26 @@
             currentSelectedNodeId = nodeId;
             document.getElementById('selected-vm-id').textContent = nodeId;
             
-            // Buscar el flavor actual del nodo
+            // Buscar el nodo
             if (typeof state !== 'undefined') {
                 const node = state.nodes.find(n => n.id === nodeId);
-                if (node && node.flavor) {
+                if (node) {
+                    // Llenar los campos de flavor
                     document.getElementById('selected-vm-vcpus').value = node.flavor.vcpus;
                     document.getElementById('selected-vm-ram').value = node.flavor.ram;
                     document.getElementById('selected-vm-disk').value = node.flavor.disk;
+                    document.getElementById('selected-vm-image').value = node.image || 'ubuntu';
+                    document.getElementById('selected-vm-internet').checked = node.internet_access === true;
                     
                     // Actualizar preset si corresponde
                     const presetSelect = document.getElementById('selected-vm-flavor-preset');
-                    if (node.flavor.vcpus == 1 && node.flavor.ram == 2 && node.flavor.disk == 20) {
+                    if (node.flavor.vcpus == 1 && node.flavor.ram == 0.5 && node.flavor.disk == 1) {
                         presetSelect.value = 'small';
-                    } else if (node.flavor.vcpus == 2 && node.flavor.ram == 4 && node.flavor.disk == 40) {
+                    } else if (node.flavor.vcpus == 2 && node.flavor.ram == 1 && node.flavor.disk == 2) {
                         presetSelect.value = 'medium';
-                    } else if (node.flavor.vcpus == 4 && node.flavor.ram == 8 && node.flavor.disk == 80) {
+                    } else if (node.flavor.vcpus == 3 && node.flavor.ram == 1.5 && node.flavor.disk == 3) {
                         presetSelect.value = 'large';
-                    } else if (node.flavor.vcpus == 8 && node.flavor.ram == 16 && node.flavor.disk == 160) {
+                    } else if (node.flavor.vcpus == 4 && node.flavor.ram == 2 && node.flavor.disk == 4) {
                         presetSelect.value = 'xlarge';
                     } else {
                         presetSelect.value = 'custom';
@@ -363,8 +379,6 @@
                     headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({ 
                         name: nombre, 
-                        format: 'full',
-                        flavor: {vcpus: 2, ram: 2, disk: 20}, // Default
                         az: az
                     })
                 });
@@ -373,6 +387,57 @@
                 alert(`Guardado ✅\nArchivo: ${data.filename}`);
             } catch (e) {
                 alert('❌ No se pudo guardar: ' + e.message);
+            }
+        });
+
+        // Guardar en base de datos
+        document.getElementById('save-db-btn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/topology/save-db', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showNotification(data.message, 'info');
+                } else {
+                    showNotification('Error: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving to DB:', error);
+                showNotification('Error al guardar en base de datos', 'error');
+            }
+        });
+
+        // Exportar JSON
+        document.getElementById('export-json-btn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/topology/export-json');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Crear y descargar el archivo JSON
+                    const jsonData = JSON.stringify(data.data, null, 2);
+                    const blob = new Blob([jsonData], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'topology_export.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showNotification('JSON exportado exitosamente', 'success');
+                } else {
+                    showNotification('Error al exportar JSON: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error exporting JSON:', error);
+                showNotification('Error al exportar JSON', 'error');
             }
         });
 

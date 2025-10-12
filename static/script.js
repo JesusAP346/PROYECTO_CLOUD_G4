@@ -9,7 +9,7 @@ let state = {
     dragOffset: { x: 0, y: 0 }
 };
 
-// Variables para zoom y pan - SIN LÍMITES
+// Variables para zoom y pan
 let scale = 1;
 let translateX = 0;
 let translateY = 0;
@@ -32,7 +32,6 @@ const elements = {
     addNodeBtn: document.getElementById('add-node-btn'),
     connectBtn: document.getElementById('connect-btn'),
     deleteNodeBtn: document.getElementById('delete-node-btn'),
-    selectedNodeId: document.getElementById('selected-node-id'),
     nodeCountDisplay: document.getElementById('node-count-display'),
     edgeCountDisplay: document.getElementById('edge-count-display'),
     connectModeIndicator: document.getElementById('connect-mode-indicator'),
@@ -46,16 +45,37 @@ const elements = {
     selectedVmPanel: document.getElementById('selected-vm-panel')
 };
 
+// Función para validar flavor antes de enviar al backend
+function validateFlavor(flavor) {
+    const vcpus = parseInt(flavor.vcpus);
+    const ram = parseFloat(flavor.ram);
+    const disk = parseInt(flavor.disk);
+    
+    if (isNaN(vcpus) || vcpus < 1 || vcpus > 4) {
+        return { valid: false, error: "vCPUs debe ser un número entero entre 1 y 4" };
+    }
+    
+    if (isNaN(ram) || ram < 0.5 || ram > 4 || (ram * 2) % 1 !== 0) {
+        return { valid: false, error: "RAM debe ser entre 0.5 y 4 GB (múltiplos de 0.5)" };
+    }
+    
+    if (isNaN(disk) || disk < 1 || disk > 10) {
+        return { valid: false, error: "Disco debe ser un número entero entre 1 y 10 GB" };
+    }
+    
+    return { valid: true };
+}
+
 // Inicialización
 document.addEventListener('DOMContentLoaded', function() {
     lucide.createIcons();
     setupInfiniteCanvas();
     loadTopologyState();
     setupEventListeners();
+    setupAZListeners(); // Nuevo: Configurar listeners para AZ
     applyZoom();
 });
 
-// NUEVA FUNCIÓN: Configurar canvas infinito
 function setupInfiniteCanvas() {
     elements.svg.setAttribute('width', '10000');
     elements.svg.setAttribute('height', '10000');
@@ -104,451 +124,35 @@ function setupEventListeners() {
     elements.svg.addEventListener('mouseleave', handleMouseUp);
 }
 
-// NUEVA FUNCIÓN: Limpiar toda la topología
-async function clearAll() {
-    if (state.nodes.length === 0) {
-        showNotification('No hay nada que limpiar', 'info');
-        return;
-    }
-    
-    if (!confirm('¿Estás seguro de que quieres eliminar toda la topología? Esta acción no se puede deshacer.')) {
-        return;
-    }
-    
-    try {
-        const response = await fetch('/api/topology/clear', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
+// NUEVA FUNCIÓN: Configurar listeners para Availability Zone
+function setupAZListeners() {
+    const azRadios = document.querySelectorAll('input[name="slice-az"]');
+    azRadios.forEach(radio => {
+        radio.addEventListener('change', async function() {
+            const azValue = this.value;
+            
+            try {
+                const response = await fetch('/api/placement/az', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ az: azValue === "" ? null : azValue })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showNotification(`Zona de disponibilidad establecida: ${azValue || 'Automático'}`, 'success');
+                } else {
+                    showNotification('Error al establecer AZ: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error setting AZ:', error);
+                showNotification('Error al establecer la zona de disponibilidad', 'error');
             }
         });
-        
-        const data = await response.json();
-        if (data.success) {
-            state.nodes = data.topology.nodes;
-            state.edges = data.topology.edges;
-            state.selectedNode = null;
-            state.connectMode = false;
-            state.connectFrom = null;
-            
-            // Resetear UI
-            elements.deleteNodeBtn.classList.add('hidden');
-            elements.connectModeIndicator.classList.add('hidden');
-            elements.connectBtn.textContent = 'Conectar VMs';
-            elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
-            elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
-            elements.selectedVmConfig.classList.add('hidden');
-            
-            // Resetear vista
-            scale = 1;
-            translateX = 0;
-            translateY = 0;
-            
-            drawTopology();
-            applyZoom();
-            
-            showNotification('Topología limpiada exitosamente', 'success');
-        }
-    } catch (error) {
-        console.error('Error clearing topology:', error);
-        showNotification('Error al limpiar la topología', 'error');
-    }
-}
-
-// Funciones de zoom y pan - MEJORADAS para área infinita
-function zoomIn() {
-    scale *= 1.2;
-    applyZoom();
-}
-
-function zoomOut() {
-    scale /= 1.2;
-    applyZoom();
-}
-
-function resetZoom() {
-    scale = 1.2; // Un poco de zoom por defecto para mejor visibilidad
-    translateX = -4000 * scale + (elements.svgContainer.clientWidth / 2);
-    translateY = -4000 * scale + (elements.svgContainer.clientHeight / 2);
-    applyZoom();
-}
-
-function applyZoom() {
-    // Aplicar transformación al grupo interno en lugar del SVG completo
-    let svgGroup = elements.svg.querySelector('#svg-content-group');
-    if (!svgGroup) {
-        // Crear grupo si no existe
-        svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        svgGroup.id = 'svg-content-group';
-        
-        // Mover todo el contenido existente al grupo
-        while (elements.svg.firstChild) {
-            svgGroup.appendChild(elements.svg.firstChild);
-        }
-        elements.svg.appendChild(svgGroup);
-    }
-    
-    svgGroup.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
-    document.getElementById('zoom-reset').textContent = `${Math.round(scale * 100)}%`;
-}
-
-function handleWheel(event) {
-    event.preventDefault();
-    
-    const rect = elements.svgContainer.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
-    
-    const delta = -Math.sign(event.deltaY);
-    const zoomFactor = 1.1;
-    
-    // Calcular nueva escala
-    const newScale = delta > 0 ? scale * zoomFactor : scale / zoomFactor;
-    
-    // Calcular desplazamiento para mantener el punto del mouse fijo
-    translateX -= (mouseX - translateX) * (newScale/scale - 1);
-    translateY -= (mouseY - translateY) * (newScale/scale - 1);
-    
-    scale = newScale;
-    applyZoom();
-}
-
-function startPan(event) {
-    // Solo iniciar pan si no se está haciendo clic en un nodo y no estamos en modo conexión
-    if (!event.target.classList.contains('node') && !state.connectMode) {
-        isPanning = true;
-        startPanX = event.clientX - translateX;
-        startPanY = event.clientY - translateY;
-        elements.svgContainer.style.cursor = 'grabbing';
-        event.preventDefault();
-    }
-}
-
-function doPan(event) {
-    if (!isPanning) return;
-    
-    translateX = event.clientX - startPanX;
-    translateY = event.clientY - startPanY;
-    applyZoom();
-}
-
-function stopPan() {
-    isPanning = false;
-    elements.svgContainer.style.cursor = 'grab';
-}
-
-// Exportar como SVG
-function exportAsSVG() {
-    const svgElement = document.getElementById('network-svg');
-    const serializer = new XMLSerializer();
-    let svgString = serializer.serializeToString(svgElement);
-    
-    // Añadir declaración XML
-    svgString = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + svgString;
-    
-    // Crear blob y descargar
-    const blob = new Blob([svgString], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'topology.svg';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    showNotification('SVG exportado exitosamente', 'success');
-}
-
-// Exportar como PNG
-function exportAsPNG() {
-    const svgElement = document.getElementById('network-svg');
-    const serializer = new XMLSerializer();
-    let svgString = serializer.serializeToString(svgElement);
-    
-    // Añadir declaración XML
-    svgString = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n' + svgString;
-    
-    // Crear canvas para convertir SVG a PNG
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const svgBlob = new Blob([svgString], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(svgBlob);
-    
-    const img = new Image();
-    img.onload = function() {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        
-        // Descargar PNG
-        const pngUrl = canvas.toDataURL('image/png');
-        const a = document.createElement('a');
-        a.href = pngUrl;
-        a.download = 'topology.png';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        showNotification('PNG exportado exitosamente', 'success');
-    };
-    
-    img.src = url;
-}
-
-// FUNCIÓN MEJORADA: Mostrar notificaciones
-function showNotification(message, type = 'info') {
-    // Crear notificación temporal
-    const notification = document.createElement('div');
-    
-    let bgColor = 'bg-blue-500';
-    let icon = 'info';
-    
-    switch(type) {
-        case 'success':
-            bgColor = 'bg-green-500';
-            icon = 'check-circle';
-            break;
-        case 'error':
-            bgColor = 'bg-red-500';
-            icon = 'alert-circle';
-            break;
-        case 'warning':
-            bgColor = 'bg-yellow-500';
-            icon = 'alert-triangle';
-            break;
-        default:
-            bgColor = 'bg-blue-500';
-            icon = 'info';
-    }
-    
-    notification.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50 notification`;
-    notification.innerHTML = `
-        <div class="flex items-center gap-2">
-            <i data-lucide="${icon}" class="w-5 h-5"></i>
-            <span>${message}</span>
-        </div>
-    `;
-    
-    document.body.appendChild(notification);
-    
-    // Re-inicializar íconos
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-    
-    // Remover después de 3 segundos
-    setTimeout(() => {
-        if (notification.parentNode) {
-            notification.remove();
-        }
-    }, 3000);
-}
-
-function updateUI() {
-    const topology = elements.topologySelect.value;
-    
-    if (topology === 'tree') {
-        elements.treeConfig.classList.remove('hidden');
-        elements.otherConfig.classList.add('hidden');
-    } else if (topology === 'point-to-point') {
-        elements.treeConfig.classList.add('hidden');
-        elements.otherConfig.classList.add('hidden');
-    } else {
-        elements.treeConfig.classList.add('hidden');
-        elements.otherConfig.classList.remove('hidden');
-    }
-    
-    updateTreeTotal();
-}
-
-function updateTreeTotal() {
-    const levels = parseInt(elements.treeLevels.value);
-    const branching = parseInt(elements.treeBranching.value);
-    const total = Math.floor((Math.pow(branching, levels) - 1) / (branching - 1));
-    elements.treeTotal.textContent = total;
-}
-
-async function generateTopology() {
-    const topologyType = elements.topologySelect.value;
-    const config = {};
-
-    if (topologyType === 'tree') {
-        config.tree_levels = parseInt(elements.treeLevels.value);
-        config.tree_branching = parseInt(elements.treeBranching.value);
-    } else if (topologyType !== 'point-to-point') {
-        config.node_count = parseInt(elements.nodeCount.value);
-    }
-
-    // Fijar AZ del slice
-    const placement = getSelectedAZSingle();
-    try {
-        await fetch('/api/placement/az', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(placement)
-        });
-    } catch (e) {
-        console.warn('No se pudo guardar placement AZ:', e);
-    }
-
-    // Generar topología
-    try {
-        const response = await fetch('/api/topology/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: topologyType, config })
-        });
-
-        const data = await response.json();
-        if (data.success) {
-            state.nodes = data.topology.nodes;
-            state.edges = data.topology.edges;
-            drawTopology();
-            setTimeout(() => perfectCenterTopology(), 50);
-            showNotification(`Topología ${topologyType} generada`, 'success');
-        } else {
-            showNotification('Error al generar la topología: ' + data.error, 'error');
-        }
-    } catch (error) {
-        console.error('Error generating topology:', error);
-        showNotification('Error al generar la topología', 'error');
-    }
-}
-
-function perfectCenterTopology() {
-    if (state.nodes.length === 0) return;
-    
-    // Calcular el área ocupada por todos los nodos
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    
-    state.nodes.forEach(node => {
-        minX = Math.min(minX, node.x - 40); // Incluir radio del nodo
-        maxX = Math.max(maxX, node.x + 40);
-        minY = Math.min(minY, node.y - 40);
-        maxY = Math.max(maxY, node.y + 40);
     });
-    
-    const contentWidth = maxX - minX;
-    const contentHeight = maxY - minY;
-    const contentCenterX = (minX + maxX) / 2;
-    const contentCenterY = (minY + maxY) / 2;
-    
-    // Obtener dimensiones del contenedor visible
-    const container = elements.svgContainer;
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
-    
-    // Calcular escala para que la topología ocupe ~70% del área visible
-    const targetScaleX = (containerWidth * 0.7) / contentWidth;
-    const targetScaleY = (containerHeight * 0.7) / contentHeight;
-    const targetScale = Math.min(targetScaleX, targetScaleY, 2.5); // Limitar zoom máximo
-    
-    // Calcular traslación para centrar perfectamente
-    const targetTranslateX = (containerWidth / 2) - (contentCenterX * targetScale);
-    const targetTranslateY = (containerHeight / 2) - (contentCenterY * targetScale);
-    
-    // Aplicar suavemente la nueva vista
-    scale = targetScale;
-    translateX = targetTranslateX;
-    translateY = targetTranslateY;
-    
-    applyZoom();
 }
 
-async function addRandomNode() {
-    // Usar coordenadas cerca del centro pero con variación mínima
-    const x = 5000 + (Math.random() - 0.5) * 200;
-    const y = 5000 + (Math.random() - 0.5) * 200;
-    
-    // Obtener configuración de flavor por defecto
-    const defaultFlavor = {
-        vcpus: document.getElementById('vm-vcpus').value,
-        ram: document.getElementById('vm-ram').value,
-        disk: document.getElementById('vm-disk').value
-    };
-    
-    try {
-        const response = await fetch('/api/nodes', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ x, y, flavor: defaultFlavor })
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-            state.nodes = data.topology.nodes;
-            state.edges = data.topology.edges;
-            drawTopology();
-            
-            // Centrar si hay pocos nodos
-            if (state.nodes.length <= 3) {
-                setTimeout(perfectCenterTopology, 50);
-            }
-            
-            showNotification('VM agregada exitosamente', 'success');
-        }
-    } catch (error) {
-        console.error('Error adding node:', error);
-        showNotification('Error al agregar la VM', 'error');
-    }
-}
-
-function toggleConnectMode() {
-    state.connectMode = !state.connectMode;
-    state.connectFrom = null;
-    
-    if (state.connectMode) {
-        elements.connectBtn.textContent = 'Cancelar Conexión';
-        elements.connectBtn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
-        elements.connectBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
-        elements.connectModeIndicator.classList.remove('hidden');
-        updateConnectStep();
-        showNotification('Modo conexión activado. Selecciona la VM de origen.', 'info');
-    } else {
-        elements.connectBtn.textContent = 'Conectar VMs';
-        elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
-        elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
-        elements.connectModeIndicator.classList.add('hidden');
-        showNotification('Modo conexión desactivado', 'info');
-    }
-}
-
-function updateConnectStep() {
-    if (state.connectFrom) {
-        elements.connectStep.textContent = '2️⃣ Selecciona VM destino';
-    } else {
-        elements.connectStep.textContent = '1️⃣ Selecciona VM origen';
-    }
-}
-
-async function deleteSelectedNode() {
-    if (!state.selectedNode) return;
-    
-    try {
-        const response = await fetch(`/api/nodes/${state.selectedNode}`, {
-            method: 'DELETE'
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-            state.nodes = data.topology.nodes;
-            state.edges = data.topology.edges;
-            state.selectedNode = null;
-            elements.selectedVmConfig.classList.add('hidden');
-            drawTopology();
-            showNotification('VM eliminada exitosamente', 'success');
-        }
-    } catch (error) {
-        console.error('Error deleting node:', error);
-        showNotification('Error al eliminar la VM', 'error');
-    }
-}
-
+// Función para manejar clic en SVG
 function handleSvgClick(event) {
     if (event.target.classList.contains('node')) {
         const nodeId = parseInt(event.target.dataset.nodeId);
@@ -565,6 +169,7 @@ function handleSvgClick(event) {
     }
 }
 
+// Función para manejar clic en nodo
 function handleNodeClick(nodeId, event) {
     event.stopPropagation();
     
@@ -592,131 +197,91 @@ function handleNodeClick(nodeId, event) {
     }
 }
 
-async function connectNodes(fromId, toId) {
+// Función para generar topología
+async function generateTopology() {
+    const topologyType = elements.topologySelect.value;
+    const config = {};
+
+    if (topologyType === 'tree') {
+        config.tree_levels = parseInt(elements.treeLevels.value);
+        config.tree_branching = parseInt(elements.treeBranching.value);
+    } else if (topologyType !== 'point-to-point') {
+        config.node_count = parseInt(elements.nodeCount.value);
+    }
+
+    // Generar topología
     try {
-        const response = await fetch('/api/edges', {
+        const response = await fetch('/api/topology/generate', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ from: fromId, to: toId })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: topologyType, config })
         });
-        
+
         const data = await response.json();
         if (data.success) {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
-            showNotification(`Conexión establecida entre VM-${fromId} y VM-${toId}`, 'success');
+            setTimeout(() => perfectCenterTopology(), 50);
+            showNotification(`Topología ${topologyType} generada`, 'success');
         } else {
-            showNotification('No se pudo establecer la conexión. Las VMs ya pueden estar conectadas.', 'warning');
+            showNotification('Error al generar la topología: ' + data.error, 'error');
         }
     } catch (error) {
-        console.error('Error connecting nodes:', error);
-        showNotification('Error al conectar las VMs', 'error');
+        console.error('Error generating topology:', error);
+        showNotification('Error al generar la topología', 'error');
     }
 }
 
-async function deleteEdge(fromId, toId) {
-    try {
-        const response = await fetch('/api/edges/delete', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ from: fromId, to: toId })
-        });
-        
-        const data = await response.json();
-        if (data.success) {
-            state.nodes = data.topology.nodes;
-            state.edges = data.topology.edges;
-            drawTopology();
-            showNotification(`Conexión eliminada entre VM-${fromId} y VM-${toId}`, 'success');
-        }
-    } catch (error) {
-        console.error('Error deleting edge:', error);
-        showNotification('Error al eliminar la conexión', 'error');
-    }
-}
-
-function handleMouseDown(event) {
-    if (!event.target.classList.contains('node') || state.connectMode) return;
-    
-    const nodeId = parseInt(event.target.dataset.nodeId);
-    const node = state.nodes.find(n => n.id === nodeId);
-    if (!node) return;
-    
-    // Obtener las coordenadas del mouse ajustadas por el zoom y pan
-    const rect = elements.svg.getBoundingClientRect();
-    const point = elements.svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-    const svgPoint = point.matrixTransform(elements.svg.getScreenCTM().inverse());
-    
-    const mouseX = svgPoint.x;
-    const mouseY = svgPoint.y;
-    
-    state.draggingNode = nodeId;
-    state.dragOffset = {
-        x: mouseX - node.x,
-        y: mouseY - node.y
+// Función CORREGIDA para agregar VM
+async function addRandomNode() {
+    const defaultFlavor = {
+        vcpus: 1,
+        ram: 0.5,
+        disk: 1
     };
     
-    // Prevenir que se active el pan cuando se arrastra un nodo
-    event.stopPropagation();
-}
-
-function handleMouseMove(event) {
-    if (!state.draggingNode) return;
-    
-    // Obtener las coordenadas del mouse en el sistema de coordenadas del SVG
-    const rect = elements.svg.getBoundingClientRect();
-    const point = elements.svg.createSVGPoint();
-    point.x = event.clientX;
-    point.y = event.clientY;
-    const svgPoint = point.matrixTransform(elements.svg.getScreenCTM().inverse());
-    
-    const mouseX = svgPoint.x;
-    const mouseY = svgPoint.y;
-    
-    const newX = mouseX - state.dragOffset.x;
-    const newY = mouseY - state.dragOffset.y;
-    
-    // Actualizar posición localmente para respuesta inmediata
-    const node = state.nodes.find(n => n.id === state.draggingNode);
-    if (node) {
-        node.x = newX;
-        node.y = newY;
-        drawTopology();
+    // Validar el flavor por defecto
+    const validation = validateFlavor(defaultFlavor);
+    if (!validation.valid) {
+        showNotification(validation.error, 'error');
+        return;
     }
-}
-
-async function handleMouseUp() {
-    if (!state.draggingNode) return;
     
-    // Sincronizar con el servidor
-    const node = state.nodes.find(n => n.id === state.draggingNode);
-    if (node) {
-        try {
-            await fetch(`/api/nodes/${state.draggingNode}/move`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    x: node.x,
-                    y: node.y
-                })
-            });
-        } catch (error) {
-            console.error('Error moving node:', error);
+    try {
+        const response = await fetch('/api/nodes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+                flavor: defaultFlavor,
+                image: 'ubuntu',
+                internet_access: false
+            })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            state.nodes = data.topology.nodes;
+            state.edges = data.topology.edges;
+            drawTopology();
+            
+            if (state.nodes.length <= 3) {
+                setTimeout(perfectCenterTopology, 50);
+            }
+            
+            showNotification('VM agregada exitosamente', 'success');
+        } else {
+            showNotification('Error al agregar VM: ' + data.error, 'error');
         }
+    } catch (error) {
+        console.error('Error adding node:', error);
+        showNotification('Error al agregar la VM', 'error');
     }
-    
-    state.draggingNode = null;
 }
 
+// Función para dibujar la topología
 function drawTopology() {
     // Limpiar SVG
     elements.svg.innerHTML = '';
@@ -783,7 +348,7 @@ function drawTopology() {
         
         // Tooltip con información del flavor
         const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        title.textContent = `VM-${node.id}\n${node.flavor.vcpus} vCPU, ${node.flavor.ram}GB RAM, ${node.flavor.disk}GB Disk`;
+        title.textContent = `VM-${node.id}\n${node.flavor.vcpus} vCPU, ${node.flavor.ram}GB RAM, ${node.flavor.disk}GB Disk\nImagen: ${node.image || 'ubuntu'}\nInternet: ${node.internet_access !== false ? 'Sí' : 'No'}`;
         circle.appendChild(title);
         
         svgGroup.appendChild(circle);
@@ -825,6 +390,359 @@ function drawTopology() {
     lucide.createIcons();
 }
 
+// Funciones de zoom y pan
+function zoomIn() {
+    scale *= 1.2;
+    applyZoom();
+}
+
+function zoomOut() {
+    scale /= 1.2;
+    applyZoom();
+}
+
+function resetZoom() {
+    scale = 1.2;
+    translateX = -4000 * scale + (elements.svgContainer.clientWidth / 2);
+    translateY = -4000 * scale + (elements.svgContainer.clientHeight / 2);
+    applyZoom();
+}
+
+function applyZoom() {
+    let svgGroup = elements.svg.querySelector('#svg-content-group');
+    if (!svgGroup) {
+        svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        svgGroup.id = 'svg-content-group';
+        while (elements.svg.firstChild) {
+            svgGroup.appendChild(elements.svg.firstChild);
+        }
+        elements.svg.appendChild(svgGroup);
+    }
+    
+    svgGroup.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
+    document.getElementById('zoom-reset').textContent = `${Math.round(scale * 100)}%`;
+}
+
+function handleWheel(event) {
+    event.preventDefault();
+    
+    const rect = elements.svgContainer.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+    
+    const delta = -Math.sign(event.deltaY);
+    const zoomFactor = 1.1;
+    
+    const newScale = delta > 0 ? scale * zoomFactor : scale / zoomFactor;
+    
+    translateX -= (mouseX - translateX) * (newScale/scale - 1);
+    translateY -= (mouseY - translateY) * (newScale/scale - 1);
+    
+    scale = newScale;
+    applyZoom();
+}
+
+function startPan(event) {
+    if (!event.target.classList.contains('node') && !state.connectMode) {
+        isPanning = true;
+        startPanX = event.clientX - translateX;
+        startPanY = event.clientY - translateY;
+        elements.svgContainer.style.cursor = 'grabbing';
+        event.preventDefault();
+    }
+}
+
+function doPan(event) {
+    if (!isPanning) return;
+    
+    translateX = event.clientX - startPanX;
+    translateY = event.clientY - startPanY;
+    applyZoom();
+}
+
+function stopPan() {
+    isPanning = false;
+    elements.svgContainer.style.cursor = 'grab';
+}
+
+function toggleConnectMode() {
+    state.connectMode = !state.connectMode;
+    state.connectFrom = null;
+    
+    if (state.connectMode) {
+        elements.connectBtn.textContent = 'Cancelar Conexión';
+        elements.connectBtn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+        elements.connectBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+        elements.connectModeIndicator.classList.remove('hidden');
+        updateConnectStep();
+        showNotification('Modo conexión activado. Selecciona la VM de origen.', 'info');
+    } else {
+        elements.connectBtn.textContent = 'Conectar VMs';
+        elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+        elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+        elements.connectModeIndicator.classList.add('hidden');
+        showNotification('Modo conexión desactivado', 'info');
+    }
+}
+
+function updateConnectStep() {
+    if (state.connectFrom) {
+        elements.connectStep.textContent = '2️⃣ Selecciona VM destino';
+    } else {
+        elements.connectStep.textContent = '1️⃣ Selecciona VM origen';
+    }
+}
+
+async function deleteSelectedNode() {
+    if (!state.selectedNode) return;
+    
+    try {
+        const response = await fetch(`/api/nodes/${state.selectedNode}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            state.nodes = data.topology.nodes;
+            state.edges = data.topology.edges;
+            state.selectedNode = null;
+            elements.selectedVmPanel.classList.add('hidden');
+            drawTopology();
+            showNotification('VM eliminada exitosamente', 'success');
+        }
+    } catch (error) {
+        console.error('Error deleting node:', error);
+        showNotification('Error al eliminar la VM', 'error');
+    }
+}
+
+async function connectNodes(fromId, toId) {
+    try {
+        const response = await fetch('/api/edges', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ from: fromId, to: toId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            state.nodes = data.topology.nodes;
+            state.edges = data.topology.edges;
+            drawTopology();
+            showNotification(`Conexión establecida entre VM-${fromId} y VM-${toId}`, 'success');
+        } else {
+            showNotification('No se pudo establecer la conexión. Las VMs ya pueden estar conectadas.', 'warning');
+        }
+    } catch (error) {
+        console.error('Error connecting nodes:', error);
+        showNotification('Error al conectar las VMs', 'error');
+    }
+}
+
+async function deleteEdge(fromId, toId) {
+    try {
+        const response = await fetch('/api/edges/delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ from: fromId, to: toId })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            state.nodes = data.topology.nodes;
+            state.edges = data.topology.edges;
+            drawTopology();
+            showNotification(`Conexión eliminada entre VM-${fromId} y VM-${toId}`, 'success');
+        }
+    } catch (error) {
+        console.error('Error deleting edge:', error);
+        showNotification('Error al eliminar la conexión', 'error');
+    }
+}
+
+function handleMouseDown(event) {
+    if (!event.target.classList.contains('node') || state.connectMode) return;
+    
+    const nodeId = parseInt(event.target.dataset.nodeId);
+    const node = state.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    
+    const rect = elements.svg.getBoundingClientRect();
+    const point = elements.svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const svgPoint = point.matrixTransform(elements.svg.getScreenCTM().inverse());
+    
+    const mouseX = svgPoint.x;
+    const mouseY = svgPoint.y;
+    
+    state.draggingNode = nodeId;
+    state.dragOffset = {
+        x: mouseX - node.x,
+        y: mouseY - node.y
+    };
+    
+    event.stopPropagation();
+}
+
+function handleMouseMove(event) {
+    if (!state.draggingNode) return;
+    
+    const rect = elements.svg.getBoundingClientRect();
+    const point = elements.svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const svgPoint = point.matrixTransform(elements.svg.getScreenCTM().inverse());
+    
+    const mouseX = svgPoint.x;
+    const mouseY = svgPoint.y;
+    
+    const newX = mouseX - state.dragOffset.x;
+    const newY = mouseY - state.dragOffset.y;
+    
+    const node = state.nodes.find(n => n.id === state.draggingNode);
+    if (node) {
+        node.x = newX;
+        node.y = newY;
+        drawTopology();
+    }
+}
+
+async function handleMouseUp() {
+    if (!state.draggingNode) return;
+    
+    const node = state.nodes.find(n => n.id === state.draggingNode);
+    if (node) {
+        try {
+            await fetch(`/api/nodes/${state.draggingNode}/move`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    x: node.x,
+                    y: node.y
+                })
+            });
+        } catch (error) {
+            console.error('Error moving node:', error);
+        }
+    }
+    
+    state.draggingNode = null;
+}
+
+function perfectCenterTopology() {
+    if (state.nodes.length === 0) return;
+    
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    
+    state.nodes.forEach(node => {
+        minX = Math.min(minX, node.x - 40);
+        maxX = Math.max(maxX, node.x + 40);
+        minY = Math.min(minY, node.y - 40);
+        maxY = Math.max(maxY, node.y + 40);
+    });
+    
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+    const contentCenterX = (minX + maxX) / 2;
+    const contentCenterY = (minY + maxY) / 2;
+    
+    const container = elements.svgContainer;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    
+    const targetScaleX = (containerWidth * 0.7) / contentWidth;
+    const targetScaleY = (containerHeight * 0.7) / contentHeight;
+    const targetScale = Math.min(targetScaleX, targetScaleY, 2.5);
+    
+    const targetTranslateX = (containerWidth / 2) - (contentCenterX * targetScale);
+    const targetTranslateY = (containerHeight / 2) - (contentCenterY * targetScale);
+    
+    scale = targetScale;
+    translateX = targetTranslateX;
+    translateY = targetTranslateY;
+    
+    applyZoom();
+}
+
+async function clearAll() {
+    if (state.nodes.length === 0) {
+        showNotification('No hay nada que limpiar', 'info');
+        return;
+    }
+    
+    if (!confirm('¿Estás seguro de que quieres eliminar toda la topología? Esta acción no se puede deshacer.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/topology/clear', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            state.nodes = data.topology.nodes;
+            state.edges = data.topology.edges;
+            state.selectedNode = null;
+            state.connectMode = false;
+            state.connectFrom = null;
+            
+            elements.connectModeIndicator.classList.add('hidden');
+            elements.connectBtn.textContent = 'Conectar VMs';
+            elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+            elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+            elements.selectedVmPanel.classList.add('hidden');
+            
+            scale = 1;
+            translateX = 0;
+            translateY = 0;
+            
+            drawTopology();
+            applyZoom();
+            
+            showNotification('Topología limpiada exitosamente', 'success');
+        }
+    } catch (error) {
+        console.error('Error clearing topology:', error);
+        showNotification('Error al limpiar la topología', 'error');
+    }
+}
+
+function updateUI() {
+    const topology = elements.topologySelect.value;
+    
+    if (topology === 'tree') {
+        elements.treeConfig.classList.remove('hidden');
+        elements.otherConfig.classList.add('hidden');
+    } else if (topology === 'point-to-point') {
+        elements.treeConfig.classList.add('hidden');
+        elements.otherConfig.classList.add('hidden');
+    } else {
+        elements.treeConfig.classList.add('hidden');
+        elements.otherConfig.classList.remove('hidden');
+    }
+    
+    updateTreeTotal();
+}
+
+function updateTreeTotal() {
+    const levels = parseInt(elements.treeLevels.value);
+    const branching = parseInt(elements.treeBranching.value);
+    const total = Math.floor((Math.pow(branching, levels) - 1) / (branching - 1));
+    elements.treeTotal.textContent = total;
+}
+
 async function loadTopologyState() {
     try {
         const response = await fetch('/api/topology/state');
@@ -841,6 +759,116 @@ function getSelectedAZSingle() {
     const checked = document.querySelector('input[name="slice-az"]:checked');
     const val = (checked && checked.value) || "";
     return { az: val === "" ? null : val };
+}
+
+// MODIFICADO: Guardar plantilla con AZ
+document.getElementById('btnGuardar').addEventListener('click', async () => {
+    const nombre = prompt("Nombre de la plantilla:", "mi_plantilla") || "mi_plantilla";
+    
+    // Obtener AZ seleccionada
+    const az = document.querySelector('input[name="slice-az"]:checked').value;
+
+    try {
+        const res = await fetch('/api/topology/save', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ 
+                name: nombre, 
+                az: az
+            })
+        });
+        if (!res.ok) throw new Error('Error al guardar');
+        const data = await res.json();
+        alert(`Guardado ✅\nArchivo: ${data.filename}`);
+    } catch (e) {
+        alert('❌ No se pudo guardar: ' + e.message);
+    }
+});
+
+// MODIFICADO: Cargar plantilla con AZ
+document.getElementById('file-input').addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/api/topology/load', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            state.nodes = data.topology.nodes;
+            state.edges = data.topology.edges;
+            drawTopology();
+            perfectCenterTopology();
+            
+            // Actualizar la selección de AZ en la interfaz
+            const az = data.availability_zone || '';
+            const radioButton = document.querySelector(`input[name="slice-az"][value="${az}"]`);
+            if (radioButton) {
+                radioButton.checked = true;
+            } else {
+                // Si no encuentra la AZ, seleccionar Automático
+                document.querySelector('input[name="slice-az"][value=""]').checked = true;
+            }
+            
+            showNotification('Plantilla cargada exitosamente', 'success');
+        } else {
+            showNotification('Error al cargar plantilla: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error loading template:', error);
+        showNotification('Error al cargar plantilla', 'error');
+    }
+});
+
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    
+    let bgColor = 'bg-blue-500';
+    let icon = 'info';
+    
+    switch(type) {
+        case 'success':
+            bgColor = 'bg-green-500';
+            icon = 'check-circle';
+            break;
+        case 'error':
+            bgColor = 'bg-red-500';
+            icon = 'alert-circle';
+            break;
+        case 'warning':
+            bgColor = 'bg-yellow-500';
+            icon = 'alert-triangle';
+            break;
+        default:
+            bgColor = 'bg-blue-500';
+            icon = 'info';
+    }
+    
+    notification.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50 notification`;
+    notification.innerHTML = `
+        <div class="flex items-center gap-2">
+            <i data-lucide="${icon}" class="w-5 h-5"></i>
+            <span>${message}</span>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 3000);
 }
 
 // Inicializar UI
