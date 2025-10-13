@@ -39,6 +39,10 @@ STATE_PATH = os.path.expanduser("~/.orchestrator/vlans.json")
 
 # VLAN válidas 802.1Q (0 y 4095 reservadas por estándar)
 VLAN_MIN, VLAN_MAX = 1, 4094
+
+# ======== VLANs reservadas ========
+INTERNET_VLAN = 300
+RESERVED_VLANS = {INTERNET_VLAN} 
 # ============================
 
 
@@ -75,7 +79,8 @@ def allocate_vlans_for_edges(edges, node_ids, state_used_vlans):
         (e for e in edges if e["from"] in node_ids and e["to"] in node_ids and e["from"] != e["to"]),
         key=lambda e: (min(e["from"], e["to"]), max(e["from"], e["to"]))
     )
-    used = set(state_used_vlans)
+    used = set(state_used_vlans) | RESERVED_VLANS  
+
     edge_vlan_map = {}
 
     # Generador secuencial 1..4094, saltando usadas
@@ -139,6 +144,12 @@ def parse_topology(topo, state):
             vm_vlans[a].add(vlan)
             vm_vlans[b].add(vlan)
 
+    # -------- internet_access -> suma VLAN 300 --------
+    for n in nodes:
+        if n.get("internet_access") is True:
+            vm_vlans[n["id"]].add(INTERNET_VLAN)
+
+
     nodes_sorted = sorted(nodes, key=lambda n: n["id"])
     return nodes_sorted, vm_vlans, edge_vlan_map, new_used
 
@@ -189,12 +200,15 @@ def plan(nodes_sorted, vm_vlans, vnc_counters, slice_id, worker_pool):
         vnc_port = vnc_counters[wk["host"]]
         vnc_counters[wk["host"]] = vnc_port + 1
 
+        img = (n.get("image") or "cirros").strip().lower()
+
         actions.append({
             "node_id": n["id"],
             "vm_name": vm_name,
             "worker": wk,
             "vlans": vlans,
-            "vnc_port": vnc_port
+            "vnc_port": vnc_port,
+            "image": img
         })
         w += 1
     return actions
@@ -206,7 +220,9 @@ def deploy(actions, dry=False):
         wk = a["worker"]
         vlans = a["vlans"]
         vlan_args = " ".join(str(v) for v in vlans) if vlans else ""
-        cmd = f'sudo "{VM_CREATE}" {a["vm_name"]} {wk["bridge"]} {a["vnc_port"]} {vlan_args}'.strip()
+        img_flag = f'--image {a.get("image","cirros")}'
+        cmd = f'sudo "{VM_CREATE}" {img_flag} {a["vm_name"]} {wk["bridge"]} {a["vnc_port"]} {vlan_args}'.strip()
+
         run_ssh(wk["user"], wk["host"], cmd, dry=dry)
 
 
@@ -301,12 +317,15 @@ def main():
     # Topología (soporta {metadata, topology} o solo topology)
     topo = data.get("topology", data)
 
-    # ---- Leer placement.az desde metadata (si existe) ----
-    placement_az = None
+    # ---- Leer availability_zone desde metadata (si existe) ----
     meta = data.get("metadata") or {}
-    placement = meta.get("placement") or {}
-    if isinstance(placement, dict):
-        placement_az = placement.get("az")  # None (auto) | "linux-AZ-1" | "linux-AZ-2"
+    placement_az = meta.get("availability_zone")
+
+    # Normaliza: si no existe, es None; si dice "auto" o "any", también lo tratamos como None
+    if not placement_az or str(placement_az).strip().lower() in ("automatico", "any", ""):
+        placement_az = None  # modo automático (round-robin entre todos los WORKERS)
+
+      
 
     # Parse y asignación de VLAN por edge con estado persistente
     nodes_sorted, vm_vlans, edge_vlan_map, new_used = parse_topology(topo, state)
@@ -341,7 +360,8 @@ def main():
     print("\n[PLAN]")
     for a in actions:
         wk = a["worker"]
-        print(f"  {a['vm_name']} -> {wk['name']}({wk['host']}) bridge={wk['bridge']} vlans={a['vlans']} vnc={a['vnc_port']}")
+        print(f"  {a['vm_name']} -> {wk['name']}({wk['host']}) bridge={wk['bridge']} vlans={a['vlans']} vnc={a['vnc_port']} image={a['image']}")
+
 
     # Si todo OK, despliegue
     if not args.no_init:
