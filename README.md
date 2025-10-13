@@ -38,3 +38,6 @@ sudo systemctl restart postgresql
 
 ###### COMANDO PARA CREAR EL TUNEL SSH DESDE MI MAQUINA LOCAL: 
 ssh -N -L 5433:127.0.0.1:5432 -p 5801 ubuntu@IP
+
+###### IP DEL SERVIDOR WEB
+http://10.20.12.158:8080/
