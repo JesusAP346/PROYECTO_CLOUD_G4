@@ -440,26 +440,12 @@ async def save_topology(data: dict, current_user: dict = Depends(get_current_act
         # Limpiar el nombre para que sea válido como archivo
         clean_name = re.sub(r'[^\w\-_.]', '_', name)
 
-        # 1. GUARDAR EN MONGODB
-        if template_id:
-            db.templates.update_one(
-                {'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])},
-                {'$set': {'name': name, 'topology_json': topology_json, 'availability_zone': az, 'updated_at': datetime.now()}}
-            )
-            message = "Plantilla actualizada"
-        else:
-            result = db.templates.insert_one({
-                'user_id': str(current_user['_id']),
-                'name': name,
-                'topology_json': topology_json,
-                'availability_zone': az,
-                'created_at': datetime.now(),
-                'updated_at': datetime.now()
-            })
-            template_id = str(result.inserted_id)
-            message = "Plantilla guardada"
+        # Generar filename con timestamp único
+        filename = f"{clean_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        templates_dir = '/home/ubuntu/PROYECTO_CLOUD_G4/templates'
+        filepath = os.path.join(templates_dir, filename)
 
-        # 2. GUARDAR ARCHIVO FÍSICO .JSON EN SERVIDOR (como el amigo)
+        # 1. GUARDAR ARCHIVO FÍSICO .JSON EN SERVIDOR PRIMERO
         template_data = {
             'metadata': {
                 'name': name,
@@ -469,15 +455,38 @@ async def save_topology(data: dict, current_user: dict = Depends(get_current_act
             'topology': topology_json
         }
 
-        filename = f"{clean_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        filepath = os.path.join('./templates', filename)
-
         # Crear directorio si no existe
-        os.makedirs('./templates', exist_ok=True)
+        os.makedirs(templates_dir, exist_ok=True)
 
         # Guardar archivo
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(template_data, f, indent=2, ensure_ascii=False)
+
+        # 2. GUARDAR EN MONGODB (con json_filename)
+        if template_id:
+            db.templates.update_one(
+                {'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])},
+                {'$set': {
+                    'name': name,
+                    'topology_json': topology_json,
+                    'availability_zone': az,
+                    'json_filename': filename,
+                    'updated_at': datetime.now()
+                }}
+            )
+            message = "Plantilla actualizada"
+        else:
+            result = db.templates.insert_one({
+                'user_id': str(current_user['_id']),
+                'name': name,
+                'topology_json': topology_json,
+                'availability_zone': az,
+                'json_filename': filename,
+                'created_at': datetime.now(),
+                'updated_at': datetime.now()
+            })
+            template_id = str(result.inserted_id)
+            message = "Plantilla guardada"
 
         return {
             'success': True,
@@ -650,11 +659,36 @@ async def get_templates(current_user: dict = Depends(get_current_active_user)):
 @app.put("/api/templates/{template_id}")
 async def update_template(template_id: str, data: dict, current_user: dict = Depends(get_current_active_user)):
     """Actualizar plantilla"""
+    import os
+    import re
     try:
         name = data.get('name', 'topology')
         az = data.get('az', '')
         topology_json = {'nodes': topology.nodes, 'edges': topology.edges}
 
+        # Limpiar nombre y generar nuevo archivo JSON
+        if not name or name.strip() == "":
+            name = 'topology'
+        clean_name = re.sub(r'[^\w\-_.]', '_', name)
+        filename = f"{clean_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        templates_dir = '/home/ubuntu/PROYECTO_CLOUD_G4/templates'
+        filepath = os.path.join(templates_dir, filename)
+
+        # Guardar archivo JSON físico
+        template_data = {
+            'metadata': {
+                'name': name,
+                'created_at': datetime.now().isoformat(),
+                'availability_zone': az
+            },
+            'topology': topology_json
+        }
+
+        os.makedirs(templates_dir, exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(template_data, f, indent=2, ensure_ascii=False)
+
+        # Actualizar MongoDB con el nuevo json_filename
         db = get_db()
         result = db.templates.update_one(
             {'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])},
@@ -662,6 +696,7 @@ async def update_template(template_id: str, data: dict, current_user: dict = Dep
                 'name': name,
                 'topology_json': topology_json,
                 'availability_zone': az,
+                'json_filename': filename,
                 'updated_at': datetime.now()
             }}
         )
@@ -669,7 +704,7 @@ async def update_template(template_id: str, data: dict, current_user: dict = Dep
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Plantilla no encontrada")
 
-        return {'success': True, 'message': 'Plantilla actualizada'}
+        return {'success': True, 'message': 'Plantilla actualizada', 'filename': filename}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -685,7 +720,9 @@ async def delete_template(template_id: str, current_user: dict = Depends(get_cur
 
 @app.post("/api/templates/{template_id}/deploy")
 async def deploy_template(template_id: str, current_user: dict = Depends(get_current_active_user)):
-    """Desplegar plantilla como slice"""
+    """Desplegar plantilla como slice ejecutando deploy_topology.py"""
+    import subprocess
+    import os
     try:
         db = get_db()
         active_slices = db.slices.count_documents({'user_id': str(current_user['_id']), 'status': 'active'})
@@ -698,25 +735,83 @@ async def deploy_template(template_id: str, current_user: dict = Depends(get_cur
         if not template:
             raise HTTPException(status_code=404, detail='Plantilla no encontrada')
 
+        # Obtener json_filename del template
+        json_filename = template.get('json_filename')
+        if not json_filename:
+            raise HTTPException(status_code=400, detail='Template no tiene archivo JSON asociado')
+
         slice_id = f"{template['name']}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         vm_count = len(template['topology_json'].get('nodes', []))
 
-        db.slices.insert_one({
+        # Verificar que el archivo JSON existe
+        json_filepath = os.path.join('/home/ubuntu/PROYECTO_CLOUD_G4/templates', json_filename)
+        if not os.path.exists(json_filepath):
+            raise HTTPException(status_code=404, detail=f'Archivo JSON no encontrado: {json_filename}')
+
+        # EJECUTAR SCRIPT DE DESPLIEGUE (ruta absoluta en Head Node)
+        deploy_script = '/home/ubuntu/deploy_topology.py'
+        deployment_status = 'deploying'
+        deployment_output = ''
+        deployment_error = ''
+
+        try:
+            # Ejecutar el script de despliegue con PATH completo para SSH
+            # IMPORTANTE: Pasar --slice-id para que coincida con MongoDB
+            env = os.environ.copy()
+            env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+            result = subprocess.run(
+                ['python3', deploy_script, '--json', json_filepath, '--slice-id', slice_id],
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minutos de timeout
+                env=env  # Agregar PATH completo
+            )
+
+            deployment_output = result.stdout
+            deployment_error = result.stderr
+
+            if result.returncode == 0:
+                deployment_status = 'active'
+            else:
+                deployment_status = 'failed'
+
+        except subprocess.TimeoutExpired:
+            deployment_status = 'failed'
+            deployment_error = 'Timeout: El despliegue tardó más de 5 minutos'
+        except Exception as deploy_error:
+            deployment_status = 'failed'
+            deployment_error = str(deploy_error)
+
+        # Crear registro de slice con información del despliegue
+        slice_doc = {
             'template_id': str(template['_id']),
             'user_id': str(current_user['_id']),
             'slice_id': slice_id,
             'name': template['name'],
             'topology_json': template['topology_json'],
             'availability_zone': template.get('availability_zone'),
+            'json_filename': json_filename,
             'deployed_at': datetime.now(),
-            'status': 'active',
-            'vm_count': vm_count
-        })
+            'status': deployment_status,
+            'vm_count': vm_count,
+            'deployment_output': deployment_output,
+            'deployment_error': deployment_error
+        }
+
+        db.slices.insert_one(slice_doc)
 
         # Eliminar la plantilla (ahora es un slice)
         db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])})
 
-        return {'success': True, 'slice_id': slice_id}
+        return {
+            'success': deployment_status != 'failed',
+            'slice_id': slice_id,
+            'status': deployment_status,
+            'message': 'Despliegue completado' if deployment_status == 'active' else 'Despliegue falló',
+            'output': deployment_output if deployment_output else None,
+            'error': deployment_error if deployment_error else None
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -740,11 +835,85 @@ async def get_slices(current_user: dict = Depends(get_current_active_user)):
 
 @app.delete("/api/slices/{slice_id}")
 async def delete_slice(slice_id: str, current_user: dict = Depends(get_current_active_user)):
-    """Eliminar slice"""
+    """Eliminar slice ejecutando eliminar_slice.sh (destruye VMs y libera recursos)"""
+    import subprocess
+    import os
     try:
         db = get_db()
+
+        # Verificar que el slice existe y pertenece al usuario
+        slice_doc = db.slices.find_one({'slice_id': slice_id, 'user_id': str(current_user['_id'])})
+        if not slice_doc:
+            raise HTTPException(status_code=404, detail='Slice no encontrado')
+
+        # EJECUTAR SCRIPT DE ELIMINACIÓN (ruta absoluta en Head Node)
+        delete_script = '/home/ubuntu/eliminar_slice.sh'
+        deletion_output = ''
+        deletion_error = ''
+        deletion_success = False
+
+        try:
+            # Ejecutar el script con PATH completo para SSH
+            env = os.environ.copy()
+            env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+            result = subprocess.run(
+                ['bash', delete_script, slice_id],
+                capture_output=True,
+                text=True,
+                timeout=180,  # 3 minutos de timeout
+                env=env
+            )
+
+            deletion_output = result.stdout
+            deletion_error = result.stderr
+
+            if result.returncode == 0:
+                deletion_success = True
+            else:
+                deletion_success = False
+
+        except subprocess.TimeoutExpired:
+            deletion_error = 'Timeout: La eliminación tardó más de 3 minutos'
+            deletion_success = False
+        except Exception as delete_error:
+            deletion_error = str(delete_error)
+            deletion_success = False
+
+        # Si el script falló, registrar el error pero NO eliminar de MongoDB
+        if not deletion_success:
+            # Construir mensaje de error detallado
+            error_detail = f"Error al eliminar slice:\n\n"
+            error_detail += f"=== STDOUT ===\n{deletion_output}\n\n"
+            error_detail += f"=== STDERR ===\n{deletion_error}\n\n"
+            error_detail += f"=== Return Code ===\n{result.returncode}"
+
+            # Actualizar el slice con información del error
+            db.slices.update_one(
+                {'slice_id': slice_id, 'user_id': str(current_user['_id'])},
+                {'$set': {
+                    'deletion_attempted_at': datetime.now(),
+                    'deletion_error': deletion_error,
+                    'deletion_output': deletion_output,
+                    'status': 'deletion_failed'
+                }}
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=error_detail
+            )
+
+        # Si exitoso, eliminar de MongoDB
         db.slices.delete_one({'slice_id': slice_id, 'user_id': str(current_user['_id'])})
-        return {'success': True}
+
+        return {
+            'success': True,
+            'message': 'Slice eliminado correctamente (VMs destruidas y recursos liberados)',
+            'output': deletion_output if deletion_output else None
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -835,18 +1004,88 @@ async def admin_delete_template(template_id: str, current_user: dict = Depends(g
 
 @app.delete("/api/admin/slices/{slice_id}")
 async def admin_delete_slice(slice_id: str, current_user: dict = Depends(get_current_active_user)):
-    """Eliminar cualquier slice (solo admin)"""
+    """Eliminar cualquier slice ejecutando eliminar_slice.sh (solo admin)"""
+    import subprocess
+    import os
     if current_user.get('role') != 'admin':
         raise HTTPException(status_code=403, detail="Acceso denegado: requiere rol de administrador")
 
     try:
         db = get_db()
-        result = db.slices.delete_one({'slice_id': slice_id})
 
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Slice no encontrado")
+        # Verificar que el slice existe (sin restricción de usuario)
+        slice_doc = db.slices.find_one({'slice_id': slice_id})
+        if not slice_doc:
+            raise HTTPException(status_code=404, detail='Slice no encontrado')
 
-        return {'success': True, 'message': 'Slice eliminado por administrador'}
+        # EJECUTAR SCRIPT DE ELIMINACIÓN (ruta absoluta en Head Node)
+        delete_script = '/home/ubuntu/eliminar_slice.sh'
+        deletion_output = ''
+        deletion_error = ''
+        deletion_success = False
+
+        try:
+            # Ejecutar el script con PATH completo para SSH
+            env = os.environ.copy()
+            env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+            result = subprocess.run(
+                ['bash', delete_script, slice_id],
+                capture_output=True,
+                text=True,
+                timeout=180,  # 3 minutos de timeout
+                env=env
+            )
+
+            deletion_output = result.stdout
+            deletion_error = result.stderr
+
+            if result.returncode == 0:
+                deletion_success = True
+            else:
+                deletion_success = False
+
+        except subprocess.TimeoutExpired:
+            deletion_error = 'Timeout: La eliminación tardó más de 3 minutos'
+            deletion_success = False
+        except Exception as delete_error:
+            deletion_error = str(delete_error)
+            deletion_success = False
+
+        # Si el script falló, registrar el error pero NO eliminar de MongoDB
+        if not deletion_success:
+            # Construir mensaje de error detallado
+            error_detail = f"Error al eliminar slice (Admin):\n\n"
+            error_detail += f"=== STDOUT ===\n{deletion_output}\n\n"
+            error_detail += f"=== STDERR ===\n{deletion_error}\n\n"
+            error_detail += f"=== Return Code ===\n{result.returncode}"
+
+            # Actualizar el slice con información del error
+            db.slices.update_one(
+                {'slice_id': slice_id},
+                {'$set': {
+                    'deletion_attempted_at': datetime.now(),
+                    'deletion_error': deletion_error,
+                    'deletion_output': deletion_output,
+                    'status': 'deletion_failed'
+                }}
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=error_detail
+            )
+
+        # Si exitoso, eliminar de MongoDB
+        db.slices.delete_one({'slice_id': slice_id})
+
+        return {
+            'success': True,
+            'message': 'Slice eliminado por administrador (VMs destruidas y recursos liberados)',
+            'output': deletion_output if deletion_output else None
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
