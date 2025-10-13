@@ -9,12 +9,12 @@
 </head>
 <body class="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 min-h-screen flex items-center justify-center p-4">
     <div class="w-full max-w-md">
-        <!-- Logo y t�tulo -->
+        <!-- Logo y título -->
         <div class="text-center mb-8">
             <div class="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 rounded-2xl mb-4">
                 <i data-lucide="cloud" class="w-8 h-8 text-white"></i>
             </div>
-            <h1 class="text-3xl font-bold text-gray-800 mb-2">Cloud Topology Manager</h1>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">TELECLOUD</h1>
             <p class="text-gray-600">Crea tu cuenta para comenzar</p>
         </div>
 
@@ -22,7 +22,7 @@
         <div class="bg-white rounded-2xl shadow-xl p-8">
             <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Crear Cuenta</h2>
 
-            <!-- Error message (din�mico con JavaScript) -->
+            <!-- Error message (dinámico con JavaScript) -->
             <div id="error-message" class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg items-start gap-3 hidden">
                 <i data-lucide="alert-circle" class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"></i>
                 <p id="error-text" class="text-red-800 text-sm"></p>
@@ -51,10 +51,10 @@
                             required
                             minlength="3"
                             class="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                            placeholder="tu_usuario"
+                            placeholder="Usuario"
                         >
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">M�nimo 3 caracteres</p>
+                    <p class="text-xs text-gray-500 mt-1">Mínimo 3 caracteres</p>
                 </div>
 
                 <!-- Email -->
@@ -80,7 +80,7 @@
                 <!-- Password -->
                 <div class="mb-4">
                     <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
-                        Contrase�a
+                        Contraseña
                     </label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -93,16 +93,16 @@
                             required
                             minlength="6"
                             class="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                            placeholder=""""""""""
+                            placeholder="••••••••"
                         >
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">M�nimo 6 caracteres</p>
+                    <p class="text-xs text-gray-500 mt-1">Mínimo 6 caracteres</p>
                 </div>
 
                 <!-- Confirm Password -->
-                <div class="mb-6">
+                <div class="mb-4">
                     <label for="confirm-password" class="block text-sm font-medium text-gray-700 mb-2">
-                        Confirmar Contrase�a
+                        Confirmar Contraseña
                     </label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -114,22 +114,31 @@
                             name="confirm-password"
                             required
                             class="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                            placeholder=""""""""""
+                            placeholder="••••••••"
                         >
                     </div>
                 </div>
 
-                <!-- Info sobre rol por defecto -->
-                <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div class="flex items-start gap-2">
-                        <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
-                        <div class="text-sm text-blue-800">
-                            <p class="font-semibold mb-1">Cuenta de Usuario General</p>
-                            <ul class="list-disc list-inside text-xs space-y-1">
-                                <li>M�ximo 3 slices activos</li>
-                                <li>Acceso a zona linux-AZ-1</li>
-                                <li>Todas las funciones b�sicas</li>
-                            </ul>
+                <!-- Tipo de cuenta -->
+                <div class="mb-6">
+                    <label for="role" class="block text-sm font-medium text-gray-700 mb-2">
+                        Tipo de Cuenta
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="shield" class="w-5 h-5 text-gray-400"></i>
+                        </div>
+                        <select
+                            id="role"
+                            name="role"
+                            required
+                            class="pl-10 w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition appearance-none bg-white"
+                        >
+                            <option value="general">Usuario General</option>
+                            <option value="vip">Usuario VIP</option>
+                        </select>
+                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                            <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400"></i>
                         </div>
                     </div>
                 </div>
@@ -155,9 +164,9 @@
             <!-- Link a login -->
             <div class="text-center">
                 <p class="text-gray-600 text-sm">
-                    �Ya tienes cuenta?
+                    ¿Ya tienes cuenta?
                     <a href="/login" class="text-indigo-600 hover:text-indigo-700 font-semibold">
-                        Inicia sesi�n aqu�
+                        Inicia sesión aquí
                     </a>
                 </p>
             </div>
@@ -165,7 +174,7 @@
 
         <!-- Footer -->
         <div class="mt-6 text-center text-sm text-gray-500">
-            <p>Cloud Topology Manager � 2025</p>
+            <p>TELECLOUD © 2025</p>
         </div>
     </div>
 
@@ -180,6 +189,7 @@
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const confirmPassword = document.getElementById('confirm-password').value;
+            const role = document.getElementById('role').value;
 
             const errorDiv = document.getElementById('error-message');
             const errorText = document.getElementById('error-text');
@@ -192,16 +202,16 @@
             errorDiv.classList.add('hidden');
             successDiv.classList.add('hidden');
 
-            // Validar que las contrase�as coincidan
+            // Validar que las contraseñas coincidan
             if (password !== confirmPassword) {
-                errorText.textContent = 'Las contrase�as no coinciden';
+                errorText.textContent = 'Las contraseñas no coinciden';
                 errorDiv.classList.remove('hidden');
                 errorDiv.classList.add('flex');
                 lucide.createIcons();
                 return;
             }
 
-            // Deshabilitar bot�n y mostrar loading
+            // Deshabilitar botón y mostrar loading
             registerBtn.disabled = true;
             registerText.textContent = 'Creando cuenta...';
 
@@ -215,19 +225,19 @@
                         username,
                         email,
                         password,
-                        role: 'general'  // Por defecto todos son usuarios generales
+                        role
                     })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
-                    // Mostrar mensaje de �xito
-                    successText.textContent = '�Cuenta creada exitosamente! Redirigiendo al login...';
+                    // Mostrar mensaje de éxito
+                    successText.textContent = '¡Cuenta creada exitosamente! Redirigiendo al login...';
                     successDiv.classList.remove('hidden');
                     successDiv.classList.add('flex');
 
-                    // Redirigir al login despu�s de 2 segundos
+                    // Redirigir al login después de 2 segundos
                     setTimeout(() => {
                         window.location.href = '/login';
                     }, 2000);
@@ -237,17 +247,17 @@
                     errorDiv.classList.remove('hidden');
                     errorDiv.classList.add('flex');
 
-                    // Rehabilitar bot�n
+                    // Rehabilitar botón
                     registerBtn.disabled = false;
                     registerText.textContent = 'Crear Cuenta';
                 }
             } catch (error) {
                 console.error('Error:', error);
-                errorText.textContent = 'Error de conexi�n. Verifica que el servidor est� corriendo.';
+                errorText.textContent = 'Error de conexión. Verifica que el servidor esté corriendo.';
                 errorDiv.classList.remove('hidden');
                 errorDiv.classList.add('flex');
 
-                // Rehabilitar bot�n
+                // Rehabilitar botón
                 registerBtn.disabled = false;
                 registerText.textContent = 'Crear Cuenta';
             }

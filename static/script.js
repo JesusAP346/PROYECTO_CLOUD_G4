@@ -89,8 +89,18 @@ document.addEventListener('DOMContentLoaded', function() {
     setupInfiniteCanvas();
     loadTopologyState();
     setupEventListeners();
-    setupAZListeners();
-    initializeDefaultAZ();
+
+    // Cargar AZ disponibles dinámicamente según el rol del usuario
+    if (typeof loadAvailableAZs === 'function') {
+        loadAvailableAZs().then(() => {
+            setupAZListeners();
+            initializeDefaultAZ();
+        });
+    } else {
+        setupAZListeners();
+        initializeDefaultAZ();
+    }
+
     applyZoom();
 });
 
@@ -215,9 +225,9 @@ async function clearAll() {
             elements.deleteNodeBtn.classList.add('hidden');
             elements.connectModeIndicator.classList.add('hidden');
             elements.connectBtn.textContent = 'Conectar VMs';
-            elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+            elements.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
             elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
-            elements.selectedVmConfig.classList.add('hidden');
+            elements.selectedVmPanel.classList.add('hidden');
             
             // Resetear vista
             scale = 1;
@@ -613,17 +623,17 @@ async function addRandomNode() {
 function toggleConnectMode() {
     state.connectMode = !state.connectMode;
     state.connectFrom = null;
-    
+
     if (state.connectMode) {
         elements.connectBtn.textContent = 'Cancelar Conexión';
         elements.connectBtn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
-        elements.connectBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+        elements.connectBtn.classList.add('bg-red-600', 'hover:bg-red-700');
         elements.connectModeIndicator.classList.remove('hidden');
         updateConnectStep();
         showNotification('Modo conexión activado. Selecciona la VM de origen.', 'info');
     } else {
         elements.connectBtn.textContent = 'Conectar VMs';
-        elements.connectBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+        elements.connectBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
         elements.connectBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
         elements.connectModeIndicator.classList.add('hidden');
         showNotification('Modo conexión desactivado', 'info');
@@ -652,8 +662,9 @@ async function deleteSelectedNode() {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             state.selectedNode = null;
-            elements.selectedVmConfig.classList.add('hidden');
+            elements.selectedVmPanel.classList.add('hidden');
             drawTopology();
+            applyZoom();
             showNotification('VM eliminada exitosamente', 'success');
         }
     } catch (error) {
@@ -675,6 +686,7 @@ function handleSvgClick(event) {
         state.selectedNode = null;
         elements.selectedVmPanel.classList.add('hidden');
         drawTopology();
+        applyZoom();
     }
 }
 
@@ -686,6 +698,7 @@ function handleNodeClick(nodeId, event) {
             state.connectFrom = nodeId;
             updateConnectStep();
             drawTopology();
+            applyZoom();
             showNotification(`VM ${nodeId} seleccionada como origen. Ahora selecciona la VM destino.`, 'info');
         } else if (state.connectFrom !== nodeId) {
             connectNodes(state.connectFrom, nodeId);
@@ -695,13 +708,14 @@ function handleNodeClick(nodeId, event) {
         }
     } else {
         state.selectedNode = nodeId;
-        
+
         // Mostrar configuración de la VM seleccionada
         if (typeof window.showSelectedVMConfig === 'function') {
             window.showSelectedVMConfig(nodeId);
         }
-        
+
         drawTopology();
+        applyZoom();
     }
 }
 
@@ -718,6 +732,7 @@ async function connectNodes(fromId, toId) {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
+            applyZoom();
             showNotification(`Conexión establecida entre VM-${fromId} y VM-${toId}`, 'success');
         } else {
             showNotification('No se pudo establecer la conexión. Las VMs ya pueden estar conectadas.', 'warning');
@@ -741,6 +756,7 @@ async function deleteEdge(fromId, toId) {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
+            applyZoom();
             showNotification(`Conexión eliminada entre VM-${fromId} y VM-${toId}`, 'success');
         }
     } catch (error) {
@@ -798,6 +814,7 @@ function handleMouseMove(event) {
         node.x = newX;
         node.y = newY;
         drawTopology();
+        applyZoom();
     }
 }
 
@@ -827,11 +844,11 @@ async function handleMouseUp() {
 function drawTopology() {
     // Limpiar SVG
     elements.svg.innerHTML = '';
-    
+
     // Crear grupo para todo el contenido
     const svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     svgGroup.id = 'svg-content-group';
-    svgGroup.setAttribute('transform', `translate(${translateX}, ${translateY}) scale(${scale})`);
+    // No establecer transform aquí - lo hace applyZoom()
     
     // Dibujar conexiones
     state.edges.forEach(edge => {
@@ -956,6 +973,7 @@ async function loadTopologyState() {
                 setTimeout(() => perfectCenterTopology(), 200);
             } else {
                 drawTopology();
+                applyZoom();
             }
 
             // Si hay AZ de plantilla, seleccionarlo
@@ -974,6 +992,7 @@ async function loadTopologyState() {
             state.nodes = data.topology.nodes;
             state.edges = data.topology.edges;
             drawTopology();
+            applyZoom();
         }
     } catch (error) {
         console.error('Error loading topology state:', error);
@@ -981,6 +1000,7 @@ async function loadTopologyState() {
         state.nodes = [];
         state.edges = [];
         drawTopology();
+        applyZoom();
     }
 }
 

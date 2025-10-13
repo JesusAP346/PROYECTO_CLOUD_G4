@@ -2,7 +2,7 @@
 Script para crear el usuario administrador inicial
 """
 from werkzeug.security import generate_password_hash
-from database.db_config import get_db_cursor
+from PROYECTO_CLOUD_G4.versiones_pasadas.db_config import get_db_cursor
 
 def create_admin():
     username = 'admin'

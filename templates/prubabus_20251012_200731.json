@@ -1,0 +1,94 @@
+{
+  "metadata": {
+    "name": "prubabus",
+    "created_at": "2025-10-12T20:07:31.047028",
+    "availability_zone": "linux-AZ-2"
+  },
+  "topology": {
+    "nodes": [
+      {
+        "id": 1,
+        "x": 40,
+        "y": 150,
+        "label": "VM-1",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 2,
+        "x": 120,
+        "y": 150,
+        "label": "VM-2",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 3,
+        "x": 200,
+        "y": 150,
+        "label": "VM-3",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 4,
+        "x": 280,
+        "y": 150,
+        "label": "VM-4",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 5,
+        "x": 360,
+        "y": 150,
+        "label": "VM-5",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "image": "ubuntu",
+        "internet_access": false
+      }
+    ],
+    "edges": [
+      {
+        "from": 1,
+        "to": 2
+      },
+      {
+        "from": 2,
+        "to": 3
+      },
+      {
+        "from": 3,
+        "to": 4
+      },
+      {
+        "from": 4,
+        "to": 5
+      }
+    ]
+  }
+}

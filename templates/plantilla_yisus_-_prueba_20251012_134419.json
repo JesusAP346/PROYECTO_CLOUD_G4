@@ -1,0 +1,103 @@
+{
+  "metadata": {
+    "name": "plantilla yisus - prueba",
+    "created_at": "2025-10-12T13:44:19.132331",
+    "availability_zone": "linux-AZ-2"
+  },
+  "topology": {
+    "nodes": [
+      {
+        "id": 1,
+        "x": 300,
+        "y": 150,
+        "label": "VM-1",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-2",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 2,
+        "x": 230.90169943749476,
+        "y": 245.10565162951536,
+        "label": "VM-2",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-2",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 3,
+        "x": 119.09830056250527,
+        "y": 208.77852522924732,
+        "label": "VM-3",
+        "flavor": {
+          "vcpus": 1,
+          "ram": 0.5,
+          "disk": 1
+        },
+        "az": "linux-AZ-2",
+        "image": "ubuntu",
+        "internet_access": false
+      },
+      {
+        "id": 4,
+        "x": 506.09830056250524,
+        "y": -42.77850997045823,
+        "label": "VM-4",
+        "flavor": {
+          "vcpus": "1",
+          "ram": "0.5",
+          "disk": "1"
+        },
+        "az": "linux-AZ-2",
+        "image": "ubuntu",
+        "internet_access": true
+      },
+      {
+        "id": 5,
+        "x": 230.90169943749473,
+        "y": 52.894348370484636,
+        "label": "VM-5",
+        "flavor": {
+          "vcpus": "2",
+          "ram": "1",
+          "disk": "2"
+        },
+        "az": "linux-AZ-2",
+        "image": "ubuntu",
+        "internet_access": false
+      }
+    ],
+    "edges": [
+      {
+        "from": 1,
+        "to": 2
+      },
+      {
+        "from": 2,
+        "to": 3
+      },
+      {
+        "from": 3,
+        "to": 4
+      },
+      {
+        "from": 4,
+        "to": 5
+      },
+      {
+        "from": 5,
+        "to": 1
+      }
+    ]
+  }
+}

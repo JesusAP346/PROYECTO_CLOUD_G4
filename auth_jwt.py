@@ -208,11 +208,14 @@ def get_available_zones(user: dict) -> list:
     """Retorna las zonas de disponibilidad según el rol del usuario"""
     role = user.get('role', 'general')
     if role == 'admin':
-        return ['', 'linux-AZ-1', 'linux-AZ-2', 'openstack-AZ-1']
+        # Admin puede usar todas las zonas de Linux (openstack se muestra como próximamente)
+        return ['', 'linux-AZ-1', 'linux-AZ-2']
     elif role == 'vip':
+        # VIP puede usar automático y todas las zonas de Linux
         return ['', 'linux-AZ-1', 'linux-AZ-2']
     else:  # general
-        return ['', 'linux-AZ-1']
+        # General solo puede usar linux-AZ-1 (sin automático)
+        return ['linux-AZ-1']
 
 def get_max_slices(user: dict) -> int:
     """Retorna el número máximo de slices permitidos según el rol"""

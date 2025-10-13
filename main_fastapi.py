@@ -2,7 +2,7 @@
 Aplicación principal con FastAPI + JWT para autenticación
 Sirve templates con Flask montado en FastAPI
 """
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -114,27 +114,27 @@ class NetworkTopology:
 
         if topology_type == "point-to-point":
             new_nodes = [
-                {'id': next_id, 'x': base_x - 50, 'y': base_y, 'label': f'VM-{next_id}', 'flavor': flavor.copy(), 'az': self.placement_az, 'image': 'ubuntu', 'internet_access': False},
-                {'id': next_id + 1, 'x': base_x + 50, 'y': base_y, 'label': f'VM-{next_id + 1}', 'flavor': flavor.copy(), 'az': self.placement_az, 'image': 'ubuntu', 'internet_access': False}
+                {'id': next_id, 'x': base_x - 50, 'y': base_y, 'label': f'VM-{next_id}', 'flavor': flavor.copy(), 'image': 'ubuntu', 'internet_access': False},
+                {'id': next_id + 1, 'x': base_x + 50, 'y': base_y, 'label': f'VM-{next_id + 1}', 'flavor': flavor.copy(), 'image': 'ubuntu', 'internet_access': False}
             ]
             new_edges = [{'from': next_id, 'to': next_id + 1}]
 
         elif topology_type == "star":
             radius = 80
             central_id = next_id
-            new_nodes = [{'id': central_id, 'x': base_x, 'y': base_y, 'label': f'VM-{central_id}', 'flavor': flavor.copy(), 'az': self.placement_az, 'image': 'ubuntu', 'internet_access': False}]
+            new_nodes = [{'id': central_id, 'x': base_x, 'y': base_y, 'label': f'VM-{central_id}', 'flavor': flavor.copy(), 'image': 'ubuntu', 'internet_access': False}]
             node_count = config.get('node_count', 5)
             for i in range(node_count - 1):
                 angle = (i * 2 * math.pi) / (node_count - 1)
                 new_id = next_id + i + 1
-                new_nodes.append({'id': new_id, 'x': base_x + radius * math.cos(angle), 'y': base_y + radius * math.sin(angle), 'label': f'VM-{new_id}', 'flavor': flavor.copy(), 'az': self.placement_az, 'image': 'ubuntu', 'internet_access': False})
+                new_nodes.append({'id': new_id, 'x': base_x + radius * math.cos(angle), 'y': base_y + radius * math.sin(angle), 'label': f'VM-{new_id}', 'flavor': flavor.copy(), 'image': 'ubuntu', 'internet_access': False})
                 new_edges.append({'from': central_id, 'to': new_id})
 
         elif topology_type == "tree":
             levels = config.get('tree_levels', 3)
             branching = config.get('tree_branching', 2)
             root_id = next_id
-            new_nodes.append({'id': root_id, 'x': base_x, 'y': base_y, 'label': f'VM-{root_id}', 'flavor': flavor.copy(), 'az': self.placement_az, 'image': 'ubuntu', 'internet_access': False})
+            new_nodes.append({'id': root_id, 'x': base_x, 'y': base_y, 'label': f'VM-{root_id}', 'flavor': flavor.copy(), 'image': 'ubuntu', 'internet_access': False})
             current_level = [{'id': root_id, 'x': base_x, 'y': base_y}]
             current_id = next_id + 1
             for level in range(1, levels):
@@ -148,7 +148,7 @@ class NetworkTopology:
                         total_width = (nodes_in_level - 1) * spacing
                         start_x = base_x - total_width / 2
                         x = start_x + child_idx * spacing
-                        new_nodes.append({'id': current_id, 'x': x, 'y': y, 'label': f'VM-{current_id}', 'flavor': flavor.copy(), 'az': self.placement_az, 'image': 'ubuntu', 'internet_access': False})
+                        new_nodes.append({'id': current_id, 'x': x, 'y': y, 'label': f'VM-{current_id}', 'flavor': flavor.copy(), 'image': 'ubuntu', 'internet_access': False})
                         new_edges.append({'from': parent['id'], 'to': current_id})
                         next_level.append({'id': current_id, 'x': x, 'y': y})
                         current_id += 1
@@ -162,7 +162,7 @@ class NetworkTopology:
                 new_id = next_id + i
                 x = base_x + radius * math.cos(angle)
                 y = base_y + radius * math.sin(angle)
-                new_nodes.append({'id': new_id, 'x': x, 'y': y, 'label': f'VM-{new_id}', 'flavor': flavor.copy(), 'az': self.placement_az, 'image': 'ubuntu', 'internet_access': False})
+                new_nodes.append({'id': new_id, 'x': x, 'y': y, 'label': f'VM-{new_id}', 'flavor': flavor.copy(), 'image': 'ubuntu', 'internet_access': False})
                 # Conectar con el siguiente nodo
                 next_node_id = next_id + ((i + 1) % node_count)
                 new_edges.append({'from': new_id, 'to': next_node_id})
@@ -174,7 +174,7 @@ class NetworkTopology:
                 new_id = next_id + i
                 x = base_x + (i - node_count // 2) * spacing
                 y = base_y
-                new_nodes.append({'id': new_id, 'x': x, 'y': y, 'label': f'VM-{new_id}', 'flavor': flavor.copy(), 'az': self.placement_az, 'image': 'ubuntu', 'internet_access': False})
+                new_nodes.append({'id': new_id, 'x': x, 'y': y, 'label': f'VM-{new_id}', 'flavor': flavor.copy(), 'image': 'ubuntu', 'internet_access': False})
                 # Conectar con el siguiente nodo (excepto el último)
                 if i < node_count - 1:
                     new_edges.append({'from': new_id, 'to': new_id + 1})
@@ -187,7 +187,7 @@ class NetworkTopology:
                 new_id = next_id + i
                 x = base_x + radius * math.cos(angle)
                 y = base_y + radius * math.sin(angle)
-                new_nodes.append({'id': new_id, 'x': x, 'y': y, 'label': f'VM-{new_id}', 'flavor': flavor.copy(), 'az': self.placement_az, 'image': 'ubuntu', 'internet_access': False})
+                new_nodes.append({'id': new_id, 'x': x, 'y': y, 'label': f'VM-{new_id}', 'flavor': flavor.copy(), 'image': 'ubuntu', 'internet_access': False})
 
             # Conectar todos con todos (malla completa)
             for i in range(node_count):
@@ -213,7 +213,6 @@ class NetworkTopology:
             'y': y,
             'label': f'VM-{self.next_id}',
             'flavor': flavor.copy(),
-            'az': self.placement_az,
             'image': image,
             'internet_access': internet_access
         }
@@ -360,14 +359,33 @@ async def get_available_azs(current_user: dict = Depends(get_current_active_user
     available_azs = get_available_zones(current_user)
     role = current_user.get('role', 'general')
 
-    # Definir todos los AZ con su estado
-    all_azs = [
-        {"value": "", "label": "Automático", "enabled": "" in available_azs, "coming_soon": False},
-        {"value": "linux-AZ-1", "label": "linux-AZ-1", "enabled": "linux-AZ-1" in available_azs, "coming_soon": False},
-        {"value": "linux-AZ-2", "label": "linux-AZ-2", "enabled": "linux-AZ-2" in available_azs, "coming_soon": False},
-        {"value": "openstack-AZ-1", "label": "openstack-AZ-1 (Próximamente)", "enabled": False, "coming_soon": True},
-        {"value": "openstack-AZ-2", "label": "openstack-AZ-2 (Próximamente)", "enabled": False, "coming_soon": True}
-    ]
+    # Construir lista de AZ según el rol
+    all_azs = []
+
+    if role == 'general':
+        # Usuario General: solo linux-AZ-1 + openstack-AZ-1 (próximamente)
+        all_azs = [
+            {"value": "linux-AZ-1", "label": "linux-AZ-1", "enabled": True, "coming_soon": False},
+            {"value": "openstack-AZ-1", "label": "openstack-AZ-1 (Próximamente)", "enabled": False, "coming_soon": True}
+        ]
+    elif role == 'vip':
+        # Usuario VIP: automático + todas linux + todas openstack (próximamente)
+        all_azs = [
+            {"value": "", "label": "Automático", "enabled": True, "coming_soon": False},
+            {"value": "linux-AZ-1", "label": "linux-AZ-1", "enabled": True, "coming_soon": False},
+            {"value": "linux-AZ-2", "label": "linux-AZ-2", "enabled": True, "coming_soon": False},
+            {"value": "openstack-AZ-1", "label": "openstack-AZ-1 (Próximamente)", "enabled": False, "coming_soon": True},
+            {"value": "openstack-AZ-2", "label": "openstack-AZ-2 (Próximamente)", "enabled": False, "coming_soon": True}
+        ]
+    elif role == 'admin':
+        # Admin: igual que VIP por ahora (openstack próximamente)
+        all_azs = [
+            {"value": "", "label": "Automático", "enabled": True, "coming_soon": False},
+            {"value": "linux-AZ-1", "label": "linux-AZ-1", "enabled": True, "coming_soon": False},
+            {"value": "linux-AZ-2", "label": "linux-AZ-2", "enabled": True, "coming_soon": False},
+            {"value": "openstack-AZ-1", "label": "openstack-AZ-1 (Próximamente)", "enabled": False, "coming_soon": True},
+            {"value": "openstack-AZ-2", "label": "openstack-AZ-2 (Próximamente)", "enabled": False, "coming_soon": True}
+        ]
 
     return {
         "success": True,
@@ -589,9 +607,8 @@ async def export_topology_json(current_user: dict = Depends(get_current_active_u
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/topology/load")
-async def load_topology_from_file(file: "UploadFile", current_user: dict = Depends(get_current_active_user)):
+async def load_topology_from_file(file: UploadFile = File(...), current_user: dict = Depends(get_current_active_user)):
     """Carga una topología desde un archivo JSON"""
-    from fastapi import UploadFile
     try:
         if not file.filename.endswith('.json'):
             raise HTTPException(status_code=400, detail='Invalid file format. Only JSON files are allowed.')
@@ -847,6 +864,11 @@ async def login_page(request: Request):
     """Página de login"""
     return templates.TemplateResponse("login.html", {"request": request})
 
+@app.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request):
+    """Página de registro"""
+    return templates.TemplateResponse("register.html", {"request": request})
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     """Página de dashboard - requiere token en cookie o localStorage"""
@@ -903,4 +925,6 @@ async def admin_page(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main_fastapi:app", host="127.0.0.1", port=8000, reload=True)
+    # host="0.0.0.0" permite acceso desde cualquier IP (necesario para producción)
+    # reload=False en producción para mejor rendimiento
+    uvicorn.run("main_fastapi:app", host="0.0.0.0", port=8000, reload=False)

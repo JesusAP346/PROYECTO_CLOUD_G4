@@ -9,7 +9,7 @@ import subprocess
 
 # Importar módulos personalizados
 from auth import User, login_manager
-from database.db_config import get_db_cursor
+from PROYECTO_CLOUD_G4.versiones_pasadas.db_config import get_db_cursor
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'tu-clave-secreta-super-segura-cambiar-en-produccion')

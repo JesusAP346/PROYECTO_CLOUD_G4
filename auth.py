@@ -3,7 +3,7 @@ Sistema de autenticación y gestión de usuarios
 """
 from flask_login import LoginManager, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from database.db_config import get_db_cursor
+from PROYECTO_CLOUD_G4.versiones_pasadas.db_config import get_db_cursor
 from datetime import datetime
 
 login_manager = LoginManager()
