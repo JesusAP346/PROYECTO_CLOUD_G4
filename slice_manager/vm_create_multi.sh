@@ -1,29 +1,43 @@
 #!/bin/bash
 # Uso:
-#   sudo ./vm_create_multi.sh [--image <alias|ruta>] <vmName> <ovsBridge> <vncPort> <vlan1> [<vlan2> ...]
+#   sudo ./vm_create_multi.sh [--image <alias|ruta>] [--vcpus N] [--ram-gb G] [--disk-gb G] \
+#       <vmName> <ovsBridge> <vncPort> <vlan1> [<vlan2> ...]
 # alias soportados: cirros (default), ubuntu
 set -euo pipefail
 
 # --------- Flags opcionales ----------
 IMAGE_ALIAS_OR_PATH="cirros"
-if [[ "${1:-}" == "--image" ]]; then
-  [[ $# -ge 2 ]] || { echo "[ERROR] Falta valor para --image"; exit 1; }
-  IMAGE_ALIAS_OR_PATH="$2"
-  shift 2
-elif [[ "${1:-}" == --image=* ]]; then
-  IMAGE_ALIAS_OR_PATH="${1#--image=}"
-  shift 1
-fi
+VCPUS=1
+RAM_GB=1
+DISK_GB=10
+
+# Parseo de flags
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --image)       [[ $# -ge 2 ]] || { echo "[ERROR] Falta valor para --image"; exit 1; }; IMAGE_ALIAS_OR_PATH="$2"; shift 2 ;;
+    --image=*)     IMAGE_ALIAS_OR_PATH="${1#--image=}"; shift 1 ;;
+    --vcpus)       [[ $# -ge 2 ]] || { echo "[ERROR] Falta valor para --vcpus"; exit 1; }; VCPUS="$2"; shift 2 ;;
+    --vcpus=*)     VCPUS="${1#--vcpus=}"; shift 1 ;;
+    --ram-gb)      [[ $# -ge 2 ]] || { echo "[ERROR] Falta valor para --ram-gb"; exit 1; }; RAM_GB="$2"; shift 2 ;;
+    --ram-gb=*)    RAM_GB="${1#--ram-gb=}"; shift 1 ;;
+    --disk-gb)     [[ $# -ge 2 ]] || { echo "[ERROR] Falta valor para --disk-gb"; exit 1; }; DISK_GB="$2"; shift 2 ;;
+    --disk-gb=*)   DISK_GB="${1#--disk-gb=}"; shift 1 ;;
+    *) break ;;
+  esac
+done
 
 # --------- Posicionales ----------
+if [[ $# -lt 3 ]]; then
+  echo "Uso: sudo $0 [--image ...] [--vcpus N] [--ram-gb G] [--disk-gb G] <vmName> <ovsBridge> <vncPort> <vlan1> [<vlan2> ...]"
+  exit 1
+fi
 vmName=$1
 ovs=$2
 vncPort=$3
 shift 3
-vlans=("$@")
+vlans=("${@:-}")
 
-# --------- Imágenes en el mismo directorio ---------
-# Usa la misma que te funcionó en tu prueba manual:
+# --------- Imágenes por defecto (mismo directorio) ---------
 UBUNTU_IMG_DEFAULT="focal-server-cloudimg-amd64.img"
 CIRROS_IMG_DEFAULT="cirros-0.5.1-x86_64-disk.img"
 
@@ -52,11 +66,13 @@ if [[ ! -f $IMG ]]; then
   exit 1
 fi
 
-# --- Red user-mode opcional (como tu comando que funcionó) ---
-# Si exportas USE_USERNET=1 y la imagen es ubuntu, usamos NAT user-mode y NO creamos TAP/OVS/VLANs.
+# --- Path absoluto de la imagen base (clave para evitar el error del backing file) ---
+BASE_IMG_ABS="$(readlink -f "$IMG" 2>/dev/null || python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$IMG")"
+
+# --- Red user-mode opcional ---
 USE_USERNET="${USE_USERNET:-0}"
 
-# --- Reordenar: si existe VLAN 300, que sea eth0 (solo cuando usamos TAP/OVS) ---
+# --- Reordenar VLAN 300 primero (solo TAP/OVS) ---
 INTERNET_VLAN=300
 has_inet=false
 for v in "${vlans[@]}"; do [[ "$v" == "$INTERNET_VLAN" ]] && has_inet=true; done
@@ -68,7 +84,7 @@ if [[ "$USE_USERNET" != "1" ]]; then
   fi
 fi
 
-# Directorio de logs (mapeos por VM)
+# Directorio de logs
 LOGDIR="/var/log/vm-orchestrator"
 MAPFILE="$LOGDIR/${vmName}.map"
 if ! mkdir -p "$LOGDIR" 2>/dev/null; then
@@ -80,40 +96,65 @@ fi
 # --------- Detectar formato de imagen ---------
 detect_img_format() {
   if command -v qemu-img >/dev/null 2>&1; then
-    qemu-img info --output=json "$1" 2>/dev/null \
+    qemu-img info --output=json "$BASE_IMG_ABS" 2>/dev/null \
       | sed -n 's/.*"format": *"\([^"]*\)".*/\1/p'
   fi
 }
-FMT="$(detect_img_format "$IMG")"
+FMT="$(detect_img_format "$BASE_IMG_ABS")"
 if [[ -z "${FMT:-}" ]]; then
   case "$IMAGE_ALIAS_OR_PATH" in
     ubuntu) FMT="qcow2" ;;
-    cirros) FMT="qcow2" ;;  # pon "raw" si tu cirros es RAW
+    cirros) FMT="qcow2" ;;
     *)      FMT="qcow2" ;;
   esac
 fi
 
-# --------- Opciones base (igual a lo que te funcionó) ---------
-MEM_OPTS=(-m 2048)           # 2G RAM
-MACHINE_OPTS=(-machine q35)  # q35
-BOOT_OPTS=(-boot order=c)    # desde disco
-DISPLAY_OPTS=(-display none) # sin GTK; usamos VNC
+# --------- Memoria y CPU desde flavor ----------
+RAM_MIB=$(awk -v g="$RAM_GB" 'BEGIN{printf "%d", (g*1024)+0.5}')
+MEM_OPTS=(-m "$RAM_MIB")
+SMP_OPTS=(-smp "$VCPUS")
+MACHINE_OPTS=(-machine q35)
+BOOT_OPTS=(-boot order=c)
+DISPLAY_OPTS=(-display none)
+
+# --------- Disco por-VM (overlay qcow2 con backing absoluto) ----------
+DISKDIR="/var/lib/vm-orchestrator/disks"
+sudo mkdir -p "$DISKDIR"
+VM_DISK="$DISKDIR/${vmName}.qcow2"
+
+if [[ ! -f "$VM_DISK" ]]; then
+  sudo qemu-img create -f qcow2 -F "$FMT" -b "$BASE_IMG_ABS" "$VM_DISK" >/dev/null
+fi
+
+# Tamaño virtual base (GiB) y resize si flavor > base
+BASE_VSIZE_BYTES=$(qemu-img info --output=json "$BASE_IMG_ABS" 2>/dev/null | sed -n 's/.*"virtual-size": *\([0-9]\+\).*/\1/p')
+if [[ -z "${BASE_VSIZE_BYTES:-}" ]]; then
+  BASE_VSIZE_GB=10
+else
+  BASE_VSIZE_GB=$(awk -v b="$BASE_VSIZE_BYTES" 'BEGIN{printf "%d", (b/1024/1024/1024)+0.5}')
+fi
+if (( DISK_GB > BASE_VSIZE_GB )); then
+  sudo qemu-img resize "$VM_DISK" "${DISK_GB}G" >/dev/null
+fi
 
 # --------- Construcción de red ----------
 NETARGS=()
 {
   echo "# VM: $vmName  (VNC :$displayVNC -> puerto $vncPort)"
-  echo "# Imagen: $IMG (format=$FMT)"
+  echo "# Imagen base: $BASE_IMG_ABS (format=$FMT) -> overlay: $VM_DISK (disk=${DISK_GB}G, base=${BASE_VSIZE_GB}G)"
+  echo "# vCPUs=$VCPUS  RAM=${RAM_GB}GiB"
   echo "# Interfaces:"
 } | tee "$MAPFILE" >/dev/null
 
 USERNET_ARGS=()
 if [[ "$USE_USERNET" == "1" && "$IMAGE_ALIAS_OR_PATH" == "ubuntu" ]]; then
-  # Modo NAT user-mode (sin TAP/OVS/VLAN)
   USERNET_ARGS=(-netdev user,id=net0 -device virtio-net-pci,netdev=net0)
   echo "  eth0  user-mode (NAT)  (sin TAP/OVS)" | tee -a "$MAPFILE" >/dev/null
 else
-  # TAPs + OVS + VLANs (no usamos 'bus' ni 'addr'; QEMU autoplaza en q35)
+  IS_UBUNTU=0
+  [[ "$IMAGE_ALIAS_OR_PATH" == "ubuntu" ]] && IS_UBUNTU=1
+  PCI_BASE_SLOT=3
+
   for idx in "${!vlans[@]}"; do
     vlan=${vlans[$idx]}
     shortName=$(echo "$vmName" | sed 's/[^a-zA-Z0-9]//g' | cut -c1-8)
@@ -129,9 +170,18 @@ else
     mac=$(printf '02:%s:%s:%s:%s:%s' "$b2" "$b3" "$b4" "$b5" "$b6")
 
     NETARGS+=(-netdev tap,id=net${idx},ifname=${tapName},script=no,downscript=no)
-    NETARGS+=(-device virtio-net-pci,netdev=net${idx},mac=${mac})
 
-    echo "  eth${idx}  vlan=${vlan}  tap=${tapName}  mac=${mac}" | tee -a "$MAPFILE" >/dev/null
+    if [[ $IS_UBUNTU -eq 1 ]]; then
+      slot=$((PCI_BASE_SLOT + idx))
+      slot_hex=$(printf '0x%02x' "$slot")
+      NETARGS+=(-device virtio-net-pci,netdev=net${idx},mac=${mac},bus=pcie.0,addr=${slot_hex})
+      guest_if="enp0s${slot}"
+    else
+      NETARGS+=(-device virtio-net-pci,netdev=net${idx},mac=${mac})
+      guest_if="eth${idx}"
+    fi
+
+    echo "  ${guest_if}  vlan=${vlan}  tap=${tapName}  mac=${mac}" | tee -a "$MAPFILE" >/dev/null
   done
 fi
 
@@ -143,6 +193,7 @@ sudo qemu-system-x86_64 \
   -enable-kvm \
   -cpu host \
   "${MEM_OPTS[@]}" \
+  "${SMP_OPTS[@]}" \
   "${MACHINE_OPTS[@]}" \
   "${BOOT_OPTS[@]}" \
   -vnc 0.0.0.0:"$displayVNC" \
@@ -152,10 +203,17 @@ sudo qemu-system-x86_64 \
   -snapshot \
   "${USERNET_ARGS[@]}" \
   "${NETARGS[@]}" \
-  -drive file="$IMG",if=virtio,format="$FMT",cache=none,aio=threads,discard=unmap
+  -drive file="$VM_DISK",if=virtio,format=qcow2,cache=none,aio=threads,discard=unmap
 
 echo "[OK] VM $vmName lanzada. Revisa $MAPFILE para el mapeo de interfaces."
+
+# Pista DHCP si hay VLAN 300
 if $has_inet && [[ "$USE_USERNET" != "1" ]]; then
-  echo "# Recuerda: dentro de la VM puedes pedir DHCP en eth0 (VLAN 300) con:"
-  echo "#   sudo /sbin/cirros-dhcpc up eth0"
+  if [[ "${IMAGE_ALIAS_OR_PATH}" == "ubuntu" ]]; then
+    echo "# Recuerda (Ubuntu): dentro de la VM puedes pedir DHCP en enp0s3 (VLAN 300) con:"
+    echo "#   sudo dhclient enp0s3"
+  else
+    echo "# Recuerda (Cirros): dentro de la VM puedes pedir DHCP en eth0 (VLAN 300) con:"
+    echo "#   sudo /sbin/cirros-dhcpc up eth0"
+  fi
 fi
