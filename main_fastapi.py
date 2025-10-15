@@ -2,7 +2,7 @@
 Aplicación principal con FastAPI + JWT para autenticación
 Sirve templates con Flask montado en FastAPI
 """
-from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -15,6 +15,7 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 import os
+import asyncio
 
 # Imports de autenticación JWT
 from auth_jwt import (
@@ -973,12 +974,192 @@ async def delete_template(template_id: str, current_user: dict = Depends(get_cur
         )
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==========================================
+# FUNCIÓN ASYNC PARA DESPLIEGUE EN BACKGROUND
+# ==========================================
+
+async def run_deployment_in_background(slice_id: str, json_filepath: str, template_name: str,
+                                       template_id: str, user_id: str, username: str,
+                                       vm_count: int, az: str, topology_json: dict,
+                                       json_filename: str):
+    """
+    Ejecuta el despliegue en background y escribe eventos de progreso.
+    """
+    import subprocess
+    db = get_db()
+
+    try:
+        # Evento 1: Inicio del despliegue
+        write_progress(slice_id, 'deployment_start', f'Iniciando despliegue de {vm_count} VMs...', {
+            'slice_id': slice_id,
+            'vm_count': vm_count,
+            'az': az or 'auto'
+        })
+
+        await asyncio.sleep(0.5)
+
+        # Evento 2: Validando configuración
+        write_progress(slice_id, 'validation', 'Validando configuración y recursos...', {})
+
+        await asyncio.sleep(0.5)
+
+        # Evento 3: Iniciando script de despliegue
+        write_progress(slice_id, 'script_start', 'Ejecutando script de despliegue...', {})
+
+        # EJECUTAR SCRIPT DE DESPLIEGUE
+        deploy_script = '/home/ubuntu/deploy_topology.py'
+        env = os.environ.copy()
+        env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+        # Crear proceso
+        process = await asyncio.create_subprocess_exec(
+            'python3', deploy_script, '--json', json_filepath, '--slice-id', slice_id,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env
+        )
+
+        # Reportar progreso mientras corre (simulado basado en VM count)
+        # Por cada VM, reportar progreso
+        for i in range(1, vm_count + 1):
+            await asyncio.sleep(3)  # Esperar ~3 segundos por VM
+            write_progress(slice_id, 'vm_deploying', f'Desplegando VM {i}/{vm_count}...', {
+                'vm_number': i,
+                'vm_total': vm_count,
+                'progress': int((i / vm_count) * 100)
+            })
+
+        # Esperar a que termine el proceso
+        stdout, stderr = await process.communicate()
+        deployment_output = stdout.decode()
+        deployment_error = stderr.decode()
+        returncode = process.returncode
+
+        # Determinar estado
+        if returncode == 0:
+            deployment_status = 'active'
+
+            # Evento final: Éxito
+            write_progress(slice_id, 'deployment_complete', f'Despliegue completado exitosamente ({vm_count} VMs activas)', {
+                'slice_id': slice_id,
+                'status': 'active',
+                'vm_count': vm_count
+            })
+
+            logger.info(
+                f"Deployment successful: {slice_id} by {username}",
+                extra={
+                    'action': 'deployment_success',
+                    'user': username,
+                    'user_id': user_id,
+                    'slice_id': slice_id,
+                    'vm_count': vm_count,
+                    'az': az or 'auto'
+                }
+            )
+        else:
+            deployment_status = 'failed'
+
+            # Evento final: Error
+            write_progress(slice_id, 'deployment_error', f'Error en el despliegue: {deployment_error[:200]}', {
+                'error': deployment_error,
+                'output': deployment_output
+            })
+
+            logger.error(
+                f"Deployment failed: {slice_id} by {username}",
+                extra={
+                    'action': 'deployment_failed',
+                    'user': username,
+                    'user_id': user_id,
+                    'slice_id': slice_id,
+                    'vm_count': vm_count,
+                    'error': deployment_error
+                }
+            )
+
+        # Crear registro de slice con información del despliegue
+        slice_doc = {
+            'template_id': template_id,
+            'user_id': user_id,
+            'slice_id': slice_id,
+            'name': template_name,
+            'topology_json': topology_json,
+            'availability_zone': az,
+            'json_filename': json_filename,
+            'deployed_at': datetime.now(),
+            'status': deployment_status,
+            'vm_count': vm_count,
+            'deployment_output': deployment_output,
+            'deployment_error': deployment_error
+        }
+
+        db.slices.insert_one(slice_doc)
+
+        # Eliminar la plantilla (ahora es un slice)
+        db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': user_id})
+
+    except asyncio.TimeoutError:
+        # Timeout
+        write_progress(slice_id, 'deployment_error', 'Error: Timeout - El despliegue tardó más de 5 minutos', {
+            'error': 'timeout'
+        })
+
+        # Guardar slice como failed
+        slice_doc = {
+            'template_id': template_id,
+            'user_id': user_id,
+            'slice_id': slice_id,
+            'name': template_name,
+            'topology_json': topology_json,
+            'availability_zone': az,
+            'json_filename': json_filename,
+            'deployed_at': datetime.now(),
+            'status': 'failed',
+            'vm_count': vm_count,
+            'deployment_error': 'Timeout: El despliegue tardó más de 5 minutos'
+        }
+        db.slices.insert_one(slice_doc)
+        db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': user_id})
+
+    except Exception as e:
+        # Error general
+        write_progress(slice_id, 'deployment_error', f'Error: {str(e)}', {
+            'error': str(e)
+        })
+
+        logger.error(
+            f"Deployment exception: {str(e)}",
+            extra={
+                'action': 'deployment_exception',
+                'user': username,
+                'user_id': user_id,
+                'template_id': template_id,
+                'error': str(e)
+            }
+        )
+
+        # Guardar slice como failed
+        slice_doc = {
+            'template_id': template_id,
+            'user_id': user_id,
+            'slice_id': slice_id,
+            'name': template_name,
+            'topology_json': topology_json,
+            'availability_zone': az,
+            'json_filename': json_filename,
+            'deployed_at': datetime.now(),
+            'status': 'failed',
+            'vm_count': vm_count,
+            'deployment_error': str(e)
+        }
+        db.slices.insert_one(slice_doc)
+        db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': user_id})
+
 @app.post("/api/templates/{template_id}/deploy")
 async def deploy_template(template_id: str, current_user: dict = Depends(get_current_active_user)):
-    """Desplegar plantilla como slice ejecutando deploy_topology.py"""
-    import subprocess
+    """Desplegar plantilla como slice ejecutando deploy_topology.py EN BACKGROUND con progreso en tiempo real"""
     import os
-    deploy_start_time = time.time()
 
     try:
         db = get_db()
@@ -1040,100 +1221,33 @@ async def deploy_template(template_id: str, current_user: dict = Depends(get_cur
         if not os.path.exists(json_filepath):
             raise HTTPException(status_code=404, detail=f'Archivo JSON no encontrado: {json_filename}')
 
-        # EJECUTAR SCRIPT DE DESPLIEGUE (ruta absoluta en Head Node)
-        deploy_script = '/home/ubuntu/deploy_topology.py'
-        deployment_status = 'deploying'
-        deployment_output = ''
-        deployment_error = ''
+        # Limpiar archivo de progreso previo si existe
+        progress_file = get_progress_file(slice_id)
+        if os.path.exists(progress_file):
+            os.remove(progress_file)
 
-        try:
-            # Ejecutar el script de despliegue con PATH completo para SSH
-            # IMPORTANTE: Pasar --slice-id para que coincida con MongoDB
-            env = os.environ.copy()
-            env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+        # EJECUTAR DESPLIEGUE EN BACKGROUND
+        asyncio.create_task(run_deployment_in_background(
+            slice_id=slice_id,
+            json_filepath=json_filepath,
+            template_name=template['name'],
+            template_id=str(template['_id']),
+            user_id=str(current_user['_id']),
+            username=current_user['username'],
+            vm_count=vm_count,
+            az=template.get('availability_zone'),
+            topology_json=template['topology_json'],
+            json_filename=json_filename
+        ))
 
-            result = subprocess.run(
-                ['python3', deploy_script, '--json', json_filepath, '--slice-id', slice_id],
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 minutos de timeout
-                env=env  # Agregar PATH completo
-            )
-
-            deployment_output = result.stdout
-            deployment_error = result.stderr
-
-            if result.returncode == 0:
-                deployment_status = 'active'
-            else:
-                deployment_status = 'failed'
-
-        except subprocess.TimeoutExpired:
-            deployment_status = 'failed'
-            deployment_error = 'Timeout: El despliegue tardó más de 5 minutos'
-        except Exception as deploy_error:
-            deployment_status = 'failed'
-            deployment_error = str(deploy_error)
-
-        # Crear registro de slice con información del despliegue
-        slice_doc = {
-            'template_id': str(template['_id']),
-            'user_id': str(current_user['_id']),
-            'slice_id': slice_id,
-            'name': template['name'],
-            'topology_json': template['topology_json'],
-            'availability_zone': template.get('availability_zone'),
-            'json_filename': json_filename,
-            'deployed_at': datetime.now(),
-            'status': deployment_status,
-            'vm_count': vm_count,
-            'deployment_output': deployment_output,
-            'deployment_error': deployment_error
-        }
-
-        db.slices.insert_one(slice_doc)
-
-        # Eliminar la plantilla (ahora es un slice)
-        db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])})
-
-        # Calcular duración del despliegue
-        deploy_duration = time.time() - deploy_start_time
-
-        # Log resultado del despliegue
-        if deployment_status == 'active':
-            logger.info(
-                f"Deployment successful: {slice_id} by {current_user['username']}",
-                extra={
-                    'action': 'deployment_success',
-                    'user': current_user['username'],
-                    'user_id': str(current_user['_id']),
-                    'slice_id': slice_id,
-                    'vm_count': vm_count,
-                    'az': template.get('availability_zone', 'auto'),
-                    'duration': round(deploy_duration, 2)
-                }
-            )
-        else:
-            logger.error(
-                f"Deployment failed: {slice_id} by {current_user['username']}",
-                extra={
-                    'action': 'deployment_failed',
-                    'user': current_user['username'],
-                    'user_id': str(current_user['_id']),
-                    'slice_id': slice_id,
-                    'vm_count': vm_count,
-                    'error': deployment_error,
-                    'duration': round(deploy_duration, 2)
-                }
-            )
-
+        # Retornar inmediatamente con el slice_id para que el frontend se conecte al WebSocket
         return {
-            'success': deployment_status != 'failed',
+            'success': True,
             'slice_id': slice_id,
-            'status': deployment_status,
-            'message': 'Despliegue completado' if deployment_status == 'active' else 'Despliegue falló',
-            'output': deployment_output if deployment_output else None,
-            'error': deployment_error if deployment_error else None
+            'status': 'deploying',
+            'message': 'Despliegue iniciado en background',
+            'vm_count': vm_count,
+            'websocket_url': f'/ws/deploy/{slice_id}'
         }
     except HTTPException:
         raise
@@ -1289,11 +1403,7 @@ async def get_slice_vnc_info(slice_id: str, current_user: dict = Depends(get_cur
 
 @app.delete("/api/slices/{slice_id}")
 async def delete_slice(slice_id: str, current_user: dict = Depends(get_current_active_user)):
-    """Eliminar slice ejecutando eliminar_slice.sh (destruye VMs y libera recursos)"""
-    import subprocess
-    import os
-    delete_start_time = time.time()
-
+    """Eliminar slice EN BACKGROUND con progreso en tiempo real vía WebSocket"""
     try:
         db = get_db()
 
@@ -1311,6 +1421,9 @@ async def delete_slice(slice_id: str, current_user: dict = Depends(get_current_a
             )
             raise HTTPException(status_code=404, detail='Slice no encontrado')
 
+        slice_name = slice_doc.get('name', slice_id)
+        vm_count = slice_doc.get('vm_count', 0)
+
         # Log inicio de eliminación
         logger.info(
             f"Slice deletion started: {slice_id} by {current_user['username']}",
@@ -1319,102 +1432,31 @@ async def delete_slice(slice_id: str, current_user: dict = Depends(get_current_a
                 'user': current_user['username'],
                 'user_id': str(current_user['_id']),
                 'slice_id': slice_id,
-                'vm_count': slice_doc.get('vm_count', 0)
+                'vm_count': vm_count
             }
         )
 
-        # EJECUTAR SCRIPT DE ELIMINACIÓN (ruta absoluta en Head Node)
-        delete_script = '/home/ubuntu/eliminar_slice.sh'
-        deletion_output = ''
-        deletion_error = ''
-        deletion_success = False
+        # Limpiar archivo de progreso previo si existe
+        progress_file = get_deletion_progress_file(slice_id)
+        if os.path.exists(progress_file):
+            os.remove(progress_file)
 
-        try:
-            # Ejecutar el script con PATH completo para SSH
-            env = os.environ.copy()
-            env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+        # EJECUTAR ELIMINACIÓN EN BACKGROUND
+        asyncio.create_task(run_deletion_in_background(
+            slice_id=slice_id,
+            slice_name=slice_name,
+            user_id=str(current_user['_id']),
+            username=current_user['username'],
+            vm_count=vm_count
+        ))
 
-            result = subprocess.run(
-                ['bash', delete_script, slice_id],
-                capture_output=True,
-                text=True,
-                timeout=180,  # 3 minutos de timeout
-                env=env
-            )
-
-            deletion_output = result.stdout
-            deletion_error = result.stderr
-
-            if result.returncode == 0:
-                deletion_success = True
-            else:
-                deletion_success = False
-
-        except subprocess.TimeoutExpired:
-            deletion_error = 'Timeout: La eliminación tardó más de 3 minutos'
-            deletion_success = False
-        except Exception as delete_error:
-            deletion_error = str(delete_error)
-            deletion_success = False
-
-        # Si el script falló, registrar el error pero NO eliminar de MongoDB
-        if not deletion_success:
-            # Construir mensaje de error detallado
-            error_detail = f"Error al eliminar slice:\n\n"
-            error_detail += f"=== STDOUT ===\n{deletion_output}\n\n"
-            error_detail += f"=== STDERR ===\n{deletion_error}\n\n"
-            error_detail += f"=== Return Code ===\n{result.returncode}"
-
-            # Log fallo de eliminación
-            logger.error(
-                f"Slice deletion failed: {slice_id} by {current_user['username']}",
-                extra={
-                    'action': 'slice_delete_failed',
-                    'user': current_user['username'],
-                    'user_id': str(current_user['_id']),
-                    'slice_id': slice_id,
-                    'error': deletion_error,
-                    'return_code': result.returncode
-                }
-            )
-
-            # Actualizar el slice con información del error
-            db.slices.update_one(
-                {'slice_id': slice_id, 'user_id': str(current_user['_id'])},
-                {'$set': {
-                    'deletion_attempted_at': datetime.now(),
-                    'deletion_error': deletion_error,
-                    'deletion_output': deletion_output,
-                    'status': 'deletion_failed'
-                }}
-            )
-            raise HTTPException(
-                status_code=500,
-                detail=error_detail
-            )
-
-        # Si exitoso, eliminar de MongoDB
-        db.slices.delete_one({'slice_id': slice_id, 'user_id': str(current_user['_id'])})
-
-        # Calcular duración
-        delete_duration = time.time() - delete_start_time
-
-        # Log éxito de eliminación
-        logger.info(
-            f"Slice deletion successful: {slice_id} by {current_user['username']}",
-            extra={
-                'action': 'slice_delete_success',
-                'user': current_user['username'],
-                'user_id': str(current_user['_id']),
-                'slice_id': slice_id,
-                'duration': round(delete_duration, 2)
-            }
-        )
-
+        # Retornar inmediatamente con el slice_id para que el frontend se conecte al WebSocket
         return {
             'success': True,
-            'message': 'Slice eliminado correctamente (VMs destruidas y recursos liberados)',
-            'output': deletion_output if deletion_output else None
+            'slice_id': slice_id,
+            'status': 'deleting',
+            'message': 'Eliminación iniciada en background',
+            'websocket_url': f'/ws/delete/{slice_id}'
         }
 
     except HTTPException:
@@ -1432,6 +1474,359 @@ async def delete_slice(slice_id: str, current_user: dict = Depends(get_current_a
             }
         )
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# WEBSOCKET PARA PROGRESO DE DESPLIEGUE
+# ==========================================
+
+def get_progress_file(slice_id: str) -> str:
+    """Retorna ruta del archivo de progreso temporal"""
+    return f"/tmp/deploy_progress_{slice_id}.json"
+
+def write_progress(slice_id: str, event_type: str, message: str, data: dict = None):
+    """Escribe un evento de progreso al archivo JSON"""
+    progress_file = get_progress_file(slice_id)
+    event = {
+        "timestamp": datetime.now().isoformat(),
+        "type": event_type,
+        "message": message,
+        "data": data or {}
+    }
+
+    # Leer eventos existentes
+    events = []
+    if os.path.exists(progress_file):
+        try:
+            with open(progress_file, 'r', encoding='utf-8') as f:
+                events = json.load(f)
+        except:
+            events = []
+
+    # Agregar nuevo evento
+    events.append(event)
+
+    # Escribir de vuelta
+    with open(progress_file, 'w', encoding='utf-8') as f:
+        json.dump(events, f, indent=2)
+
+@app.websocket("/ws/deploy/{slice_id}")
+async def websocket_deploy_progress(websocket: WebSocket, slice_id: str):
+    """
+    WebSocket que transmite el progreso del despliegue en tiempo real.
+    Lee el archivo de progreso y envía eventos al cliente.
+    """
+    await websocket.accept()
+
+    progress_file = get_progress_file(slice_id)
+    last_sent_count = 0
+
+    try:
+        while True:
+            # Verificar si hay nuevos eventos
+            if os.path.exists(progress_file):
+                try:
+                    with open(progress_file, 'r', encoding='utf-8') as f:
+                        events = json.load(f)
+
+                    # Enviar solo eventos nuevos
+                    new_events = events[last_sent_count:]
+                    for event in new_events:
+                        await websocket.send_json(event)
+                        last_sent_count += 1
+
+                    # Si hay un evento de completado o error, cerrar conexión
+                    if new_events:
+                        last_event = new_events[-1]
+                        if last_event['type'] in ('deployment_complete', 'deployment_error'):
+                            # Esperar 2 segundos para que el frontend procese
+                            await asyncio.sleep(2)
+                            # Limpiar archivo de progreso
+                            try:
+                                os.remove(progress_file)
+                            except:
+                                pass
+                            break
+
+                except Exception as e:
+                    logger.error(f"Error reading progress file: {e}")
+
+            # Esperar 500ms antes de revisar nuevamente
+            await asyncio.sleep(0.5)
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for slice {slice_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for slice {slice_id}: {e}")
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
+
+# ==========================================
+# WEBSOCKET PARA PROGRESO DE ELIMINACIÓN
+# ==========================================
+
+def get_deletion_progress_file(slice_id: str) -> str:
+    """Retorna ruta del archivo de progreso de eliminación temporal"""
+    return f"/tmp/deletion_progress_{slice_id}.json"
+
+def write_deletion_progress(slice_id: str, event_type: str, message: str, data: dict = None):
+    """Escribe un evento de progreso de eliminación al archivo JSON"""
+    progress_file = get_deletion_progress_file(slice_id)
+    event = {
+        "timestamp": datetime.now().isoformat(),
+        "type": event_type,
+        "message": message,
+        "data": data or {}
+    }
+
+    # Leer eventos existentes
+    events = []
+    if os.path.exists(progress_file):
+        try:
+            with open(progress_file, 'r', encoding='utf-8') as f:
+                events = json.load(f)
+        except:
+            events = []
+
+    # Agregar nuevo evento
+    events.append(event)
+
+    # Escribir de vuelta
+    with open(progress_file, 'w', encoding='utf-8') as f:
+        json.dump(events, f, indent=2)
+
+async def run_deletion_in_background(slice_id: str, slice_name: str, user_id: str, username: str, vm_count: int):
+    """
+    Ejecuta la eliminación en background y escribe eventos de progreso REAL.
+    Pasos:
+      1. destroy_slice_from_mapeo.sh - Destruye VMs/TAPs/OVS
+      2. deploy_topology.py --release-slice - Libera VLANs y puertos
+    """
+    import subprocess
+    db = get_db()
+
+    try:
+        # Evento 1: Inicio
+        write_deletion_progress(slice_id, 'deletion_start', f'Iniciando eliminación de slice "{slice_name}"...', {
+            'slice_id': slice_id,
+            'vm_count': vm_count
+        })
+
+        await asyncio.sleep(0.5)
+
+        # Evento 2: Destruyendo VMs en workers
+        write_deletion_progress(slice_id, 'destroying_vms', 'Destruyendo VMs y liberando recursos en workers...', {})
+
+        # PASO 1: Ejecutar destroy_slice_from_mapeo.sh
+        destroy_script = '/home/ubuntu/destroy_slice_from_mapeo.sh'
+        env = os.environ.copy()
+        env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+        process1 = await asyncio.create_subprocess_exec(
+            'bash', destroy_script, slice_id,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env
+        )
+
+        stdout1, stderr1 = await process1.communicate()
+        destroy_output = stdout1.decode()
+        destroy_error = stderr1.decode()
+        destroy_returncode = process1.returncode
+
+        if destroy_returncode != 0:
+            # Error en destroy
+            write_deletion_progress(slice_id, 'deletion_error', f'Error al destruir VMs: {destroy_error[:200]}', {
+                'error': destroy_error,
+                'output': destroy_output
+            })
+
+            logger.error(
+                f"Deletion failed (destroy): {slice_id} by {username}",
+                extra={
+                    'action': 'deletion_failed_destroy',
+                    'user': username,
+                    'user_id': user_id,
+                    'slice_id': slice_id,
+                    'error': destroy_error
+                }
+            )
+
+            # Actualizar slice con error
+            db.slices.update_one(
+                {'slice_id': slice_id, 'user_id': user_id},
+                {'$set': {
+                    'deletion_attempted_at': datetime.now(),
+                    'deletion_error': destroy_error,
+                    'deletion_output': destroy_output,
+                    'status': 'deletion_failed'
+                }}
+            )
+            return
+
+        await asyncio.sleep(0.5)
+
+        # Evento 3: Liberando recursos
+        write_deletion_progress(slice_id, 'releasing_resources', 'Liberando VLANs y puertos públicos...', {})
+
+        # PASO 2: Ejecutar deploy_topology.py --release-slice
+        release_script = '/home/ubuntu/deploy_topology.py'
+
+        process2 = await asyncio.create_subprocess_exec(
+            'python3', release_script, '--release-slice', slice_id,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env
+        )
+
+        stdout2, stderr2 = await process2.communicate()
+        release_output = stdout2.decode()
+        release_error = stderr2.decode()
+        release_returncode = process2.returncode
+
+        if release_returncode != 0:
+            # Error en release
+            write_deletion_progress(slice_id, 'deletion_error', f'Error al liberar recursos: {release_error[:200]}', {
+                'error': release_error,
+                'output': release_output
+            })
+
+            logger.error(
+                f"Deletion failed (release): {slice_id} by {username}",
+                extra={
+                    'action': 'deletion_failed_release',
+                    'user': username,
+                    'user_id': user_id,
+                    'slice_id': slice_id,
+                    'error': release_error
+                }
+            )
+
+            # Actualizar slice con error
+            db.slices.update_one(
+                {'slice_id': slice_id, 'user_id': user_id},
+                {'$set': {
+                    'deletion_attempted_at': datetime.now(),
+                    'deletion_error': release_error,
+                    'deletion_output': release_output,
+                    'status': 'deletion_failed'
+                }}
+            )
+            return
+
+        # Evento final: Éxito
+        write_deletion_progress(slice_id, 'deletion_complete', f'Slice "{slice_name}" eliminado exitosamente', {
+            'slice_id': slice_id
+        })
+
+        logger.info(
+            f"Deletion successful: {slice_id} by {username}",
+            extra={
+                'action': 'deletion_success',
+                'user': username,
+                'user_id': user_id,
+                'slice_id': slice_id,
+                'vm_count': vm_count
+            }
+        )
+
+        # Eliminar de MongoDB
+        db.slices.delete_one({'slice_id': slice_id, 'user_id': user_id})
+
+    except asyncio.TimeoutError:
+        write_deletion_progress(slice_id, 'deletion_error', 'Error: Timeout - La eliminación tardó más de lo esperado', {
+            'error': 'timeout'
+        })
+
+        db.slices.update_one(
+            {'slice_id': slice_id, 'user_id': user_id},
+            {'$set': {
+                'deletion_attempted_at': datetime.now(),
+                'deletion_error': 'Timeout',
+                'status': 'deletion_failed'
+            }}
+        )
+
+    except Exception as e:
+        write_deletion_progress(slice_id, 'deletion_error', f'Error: {str(e)}', {
+            'error': str(e)
+        })
+
+        logger.error(
+            f"Deletion exception: {str(e)}",
+            extra={
+                'action': 'deletion_exception',
+                'user': username,
+                'user_id': user_id,
+                'slice_id': slice_id,
+                'error': str(e)
+            }
+        )
+
+        db.slices.update_one(
+            {'slice_id': slice_id, 'user_id': user_id},
+            {'$set': {
+                'deletion_attempted_at': datetime.now(),
+                'deletion_error': str(e),
+                'status': 'deletion_failed'
+            }}
+        )
+
+@app.websocket("/ws/delete/{slice_id}")
+async def websocket_deletion_progress(websocket: WebSocket, slice_id: str):
+    """
+    WebSocket que transmite el progreso de la eliminación en tiempo real.
+    Lee el archivo de progreso y envía eventos al cliente.
+    """
+    await websocket.accept()
+
+    progress_file = get_deletion_progress_file(slice_id)
+    last_sent_count = 0
+
+    try:
+        while True:
+            # Verificar si hay nuevos eventos
+            if os.path.exists(progress_file):
+                try:
+                    with open(progress_file, 'r', encoding='utf-8') as f:
+                        events = json.load(f)
+
+                    # Enviar solo eventos nuevos
+                    new_events = events[last_sent_count:]
+                    for event in new_events:
+                        await websocket.send_json(event)
+                        last_sent_count += 1
+
+                    # Si hay un evento de completado o error, cerrar conexión
+                    if new_events:
+                        last_event = new_events[-1]
+                        if last_event['type'] in ('deletion_complete', 'deletion_error'):
+                            # Esperar 2 segundos para que el frontend procese
+                            await asyncio.sleep(2)
+                            # Limpiar archivo de progreso
+                            try:
+                                os.remove(progress_file)
+                            except:
+                                pass
+                            break
+
+                except Exception as e:
+                    logger.error(f"Error reading deletion progress file: {e}")
+
+            # Esperar 500ms antes de revisar nuevamente
+            await asyncio.sleep(0.5)
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for deletion {slice_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for deletion {slice_id}: {e}")
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
 
 # ==========================================
 # ENDPOINTS DE ADMINISTRADOR

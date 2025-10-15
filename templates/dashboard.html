@@ -92,6 +92,112 @@
         <!-- Notificaciones -->
         <div id="notification" class="hidden fixed top-4 right-4 z-50"></div>
 
+        <!-- Modal de Progreso de Despliegue -->
+        <div id="deployment-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto transform transition-all">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <i data-lucide="rocket" class="w-6 h-6 text-indigo-600"></i>
+                        Despliegue en Progreso
+                    </h3>
+                    <button id="close-modal-btn" class="hidden p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                        <i data-lucide="x" class="w-5 h-5 text-gray-500"></i>
+                    </button>
+                </div>
+
+                <!-- Información del Slice -->
+                <div class="mb-6 p-4 bg-indigo-50 rounded-lg">
+                    <p class="text-sm text-gray-600 mb-1">Slice ID:</p>
+                    <code id="deploying-slice-id" class="text-sm font-mono font-semibold text-indigo-700">...</code>
+                    <p class="text-sm text-gray-600 mt-2 mb-1">VMs a desplegar:</p>
+                    <span id="deploying-vm-count" class="text-lg font-bold text-gray-800">0</span>
+                </div>
+
+                <!-- Barra de Progreso -->
+                <div class="mb-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700">Progreso</span>
+                        <span id="progress-percent" class="text-sm font-semibold text-indigo-600">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                        <div id="progress-bar" class="bg-gradient-to-r from-indigo-500 to-indigo-600 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Log de Eventos -->
+                <div class="mb-4">
+                    <p class="text-sm font-semibold text-gray-700 mb-2">Estado Actual:</p>
+                    <div id="deployment-log" class="bg-gray-50 rounded-lg p-4 max-h-48 overflow-y-auto space-y-2">
+                        <div class="flex items-center gap-2 text-gray-500">
+                            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                            <span class="text-sm">Esperando conexión...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estado Final -->
+                <div id="deployment-result" class="hidden">
+                    <div class="p-4 rounded-lg mb-4" id="result-message"></div>
+                    <button onclick="closeDeploymentModal()" class="w-full px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Progreso de Eliminación -->
+        <div id="deletion-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto transform transition-all">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <i data-lucide="trash-2" class="w-6 h-6 text-red-600"></i>
+                        Eliminación en Progreso
+                    </h3>
+                    <button id="close-deletion-modal-btn" class="hidden p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                        <i data-lucide="x" class="w-5 h-5 text-gray-500"></i>
+                    </button>
+                </div>
+
+                <!-- Información del Slice -->
+                <div class="mb-6 p-4 bg-red-50 rounded-lg">
+                    <p class="text-sm text-gray-600 mb-1">Slice ID:</p>
+                    <code id="deleting-slice-id" class="text-sm font-mono font-semibold text-red-700">...</code>
+                    <p class="text-sm text-gray-600 mt-2 mb-1">Nombre:</p>
+                    <span id="deleting-slice-name" class="text-lg font-bold text-gray-800">...</span>
+                </div>
+
+                <!-- Barra de Progreso -->
+                <div class="mb-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700">Progreso</span>
+                        <span id="deletion-progress-percent" class="text-sm font-semibold text-red-600">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                        <div id="deletion-progress-bar" class="bg-gradient-to-r from-red-500 to-red-600 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Log de Eventos -->
+                <div class="mb-4">
+                    <p class="text-sm font-semibold text-gray-700 mb-2">Estado Actual:</p>
+                    <div id="deletion-log" class="bg-gray-50 rounded-lg p-4 max-h-48 overflow-y-auto space-y-2">
+                        <div class="flex items-center gap-2 text-gray-500">
+                            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                            <span class="text-sm">Esperando conexión...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estado Final -->
+                <div id="deletion-result" class="hidden">
+                    <div class="p-4 rounded-lg mb-4" id="deletion-result-message"></div>
+                    <button onclick="closeDeletionModal()" class="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold">
+                        Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Sección de Plantillas -->
         <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
             <div class="flex items-center justify-between mb-6">
@@ -456,26 +562,158 @@
             window.location.href = `/editor?template_id=${templateId}`;
         }
 
+        // Función para cerrar el modal de despliegue
+        function closeDeploymentModal() {
+            document.getElementById('deployment-modal').classList.add('hidden');
+            // Actualizar en segundo plano sin que el usuario lo note
+            setTimeout(() => {
+                loadTemplates();
+                loadSlices();
+            }, 100);
+        }
+
+        // Función para cerrar el modal de eliminación
+        function closeDeletionModal() {
+            document.getElementById('deletion-modal').classList.add('hidden');
+            // Actualizar en segundo plano sin que el usuario lo note
+            setTimeout(() => {
+                loadSlices();
+            }, 100);
+        }
+
+        // Función para actualizar el progreso
+        function updateProgress(percent) {
+            document.getElementById('progress-bar').style.width = `${percent}%`;
+            document.getElementById('progress-percent').textContent = `${percent}%`;
+        }
+
+        // Función para agregar evento al log
+        function addDeploymentEvent(type, message, data = {}) {
+            const log = document.getElementById('deployment-log');
+
+            let icon = 'loader';
+            let colorClass = 'text-gray-600';
+
+            if (type === 'deployment_start') {
+                icon = 'play-circle';
+                colorClass = 'text-blue-600';
+            } else if (type === 'validation') {
+                icon = 'check-circle';
+                colorClass = 'text-green-600';
+            } else if (type === 'script_start') {
+                icon = 'code';
+                colorClass = 'text-indigo-600';
+            } else if (type === 'vm_deploying') {
+                icon = 'server';
+                colorClass = 'text-purple-600';
+                if (data.progress) {
+                    updateProgress(data.progress);
+                }
+            } else if (type === 'deployment_complete') {
+                icon = 'check-circle-2';
+                colorClass = 'text-green-600';
+                updateProgress(100);
+            } else if (type === 'deployment_error') {
+                icon = 'alert-circle';
+                colorClass = 'text-red-600';
+            }
+
+            const eventHtml = `
+                <div class="flex items-start gap-2 ${colorClass} animate-fadeIn">
+                    <i data-lucide="${icon}" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
+                    <div class="flex-1">
+                        <span class="text-sm font-medium">${message}</span>
+                        <p class="text-xs text-gray-500">${new Date().toLocaleTimeString()}</p>
+                    </div>
+                </div>
+            `;
+
+            log.insertAdjacentHTML('beforeend', eventHtml);
+            lucide.createIcons();
+            log.scrollTop = log.scrollHeight;
+        }
+
         async function deployTemplate(templateId, templateName) {
             if (!confirm(`¿Desplegar la plantilla "${templateName}"?`)) return;
 
             try {
+                // Iniciar el despliegue
                 const response = await fetch(`/api/templates/${templateId}/deploy`, {
                     method: 'POST',
                     headers: getAuthHeaders()
                 });
                 const data = await response.json();
 
-                if (response.ok && data.success) {
-                    showNotification('Slice desplegado exitosamente', 'success');
-                    setTimeout(() => {
-                        loadTemplates();
-                        loadSlices();
-                    }, 1500);
-                } else {
-                    showNotification(data.detail || data.error || 'Error al desplegar', 'error');
+                if (!response.ok || !data.success) {
+                    showNotification(data.detail || data.error || 'Error al iniciar despliegue', 'error');
+                    return;
                 }
+
+                // Mostrar modal de progreso
+                document.getElementById('deployment-modal').classList.remove('hidden');
+                document.getElementById('deploying-slice-id').textContent = data.slice_id;
+                document.getElementById('deploying-vm-count').textContent = data.vm_count;
+                document.getElementById('deployment-log').innerHTML = '';
+                document.getElementById('deployment-result').classList.add('hidden');
+                updateProgress(0);
+                lucide.createIcons();
+
+                // Conectar WebSocket
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${wsProtocol}//${window.location.host}${data.websocket_url}`;
+                const ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    console.log('WebSocket conectado');
+                    addDeploymentEvent('connection', 'Conexión establecida con el servidor');
+                };
+
+                ws.onmessage = (event) => {
+                    const eventData = JSON.parse(event.data);
+                    console.log('WebSocket event:', eventData);
+
+                    addDeploymentEvent(eventData.type, eventData.message, eventData.data);
+
+                    // Si el despliegue terminó (éxito o error)
+                    if (eventData.type === 'deployment_complete') {
+                        document.getElementById('result-message').className = 'p-4 rounded-lg mb-4 bg-green-100 border-2 border-green-500';
+                        document.getElementById('result-message').innerHTML = `
+                            <div class="flex items-center gap-2 text-green-700">
+                                <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                                <span class="font-semibold text-lg">¡Despliegue Exitoso!</span>
+                            </div>
+                            <p class="text-sm text-green-600 mt-2">${eventData.message}</p>
+                        `;
+                        document.getElementById('deployment-result').classList.remove('hidden');
+                        document.getElementById('close-modal-btn').classList.remove('hidden');
+                        lucide.createIcons();
+                    } else if (eventData.type === 'deployment_error') {
+                        document.getElementById('result-message').className = 'p-4 rounded-lg mb-4 bg-red-100 border-2 border-red-500';
+                        document.getElementById('result-message').innerHTML = `
+                            <div class="flex items-center gap-2 text-red-700">
+                                <i data-lucide="alert-circle" class="w-6 h-6"></i>
+                                <span class="font-semibold text-lg">Error en el Despliegue</span>
+                            </div>
+                            <p class="text-sm text-red-600 mt-2">${eventData.message}</p>
+                            ${eventData.data.error ? `<p class="text-xs text-red-500 mt-2 font-mono">${eventData.data.error}</p>` : ''}
+                        `;
+                        document.getElementById('deployment-result').classList.remove('hidden');
+                        document.getElementById('close-modal-btn').classList.remove('hidden');
+                        lucide.createIcons();
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    addDeploymentEvent('error', 'Error de conexión WebSocket');
+                };
+
+                ws.onclose = () => {
+                    console.log('WebSocket cerrado');
+                };
+
             } catch (error) {
+                console.error('Error deploying template:', error);
                 showNotification('Error al desplegar el slice', 'error');
             }
         }
@@ -505,23 +743,150 @@
             window.location.href = `/viewer?slice_id=${sliceId}`;
         }
 
+        // Función para actualizar progreso de eliminación
+        function updateDeletionProgress(percent) {
+            document.getElementById('deletion-progress-bar').style.width = `${percent}%`;
+            document.getElementById('deletion-progress-percent').textContent = `${percent}%`;
+        }
+
+        // Función para agregar evento al log de eliminación
+        function addDeletionEvent(type, message) {
+            const log = document.getElementById('deletion-log');
+
+            let icon = 'loader';
+            let colorClass = 'text-gray-600';
+
+            if (type === 'start') {
+                icon = 'play-circle';
+                colorClass = 'text-red-600';
+            } else if (type === 'executing') {
+                icon = 'terminal';
+                colorClass = 'text-orange-600';
+            } else if (type === 'cleanup') {
+                icon = 'trash';
+                colorClass = 'text-red-500';
+            } else if (type === 'complete') {
+                icon = 'check-circle-2';
+                colorClass = 'text-green-600';
+            } else if (type === 'error') {
+                icon = 'alert-circle';
+                colorClass = 'text-red-600';
+            }
+
+            const eventHtml = `
+                <div class="flex items-start gap-2 ${colorClass} animate-fadeIn">
+                    <i data-lucide="${icon}" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
+                    <div class="flex-1">
+                        <span class="text-sm font-medium">${message}</span>
+                        <p class="text-xs text-gray-500">${new Date().toLocaleTimeString()}</p>
+                    </div>
+                </div>
+            `;
+
+            log.insertAdjacentHTML('beforeend', eventHtml);
+            lucide.createIcons();
+            log.scrollTop = log.scrollHeight;
+        }
+
         async function deleteSlice(sliceId, sliceName) {
-            if (!confirm(`¿Eliminar el slice "${sliceName}"? Esto liberará los recursos y VLANs.`)) return;
+            if (!confirm(`¿Eliminar el slice "${sliceName}"? Esto destruirá las VMs y liberará los recursos.`)) return;
 
             try {
+                // Iniciar la eliminación
                 const response = await fetch(`/api/slices/${sliceId}`, {
                     method: 'DELETE',
                     headers: getAuthHeaders()
                 });
                 const data = await response.json();
 
-                if (response.ok && data.success) {
-                    showNotification('Slice eliminado', 'success');
-                    setTimeout(() => loadSlices(), 1500);
-                } else {
-                    showNotification(data.detail || data.error || 'Error al eliminar', 'error');
+                if (!response.ok || !data.success) {
+                    showNotification(data.detail || data.error || 'Error al iniciar eliminación', 'error');
+                    return;
                 }
+
+                // Mostrar modal de progreso
+                document.getElementById('deletion-modal').classList.remove('hidden');
+                document.getElementById('deleting-slice-id').textContent = data.slice_id;
+                document.getElementById('deleting-slice-name').textContent = sliceName;
+                document.getElementById('deletion-log').innerHTML = '';
+                document.getElementById('deletion-result').classList.add('hidden');
+                updateDeletionProgress(0);
+                lucide.createIcons();
+
+                // Conectar WebSocket
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${wsProtocol}//${window.location.host}${data.websocket_url}`;
+                const ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    console.log('WebSocket deletion conectado');
+                    addDeletionEvent('connection', 'Conexión establecida con el servidor');
+                };
+
+                ws.onmessage = (event) => {
+                    const eventData = JSON.parse(event.data);
+                    console.log('WebSocket deletion event:', eventData);
+
+                    // Mapear tipos de eventos al sistema de iconos
+                    let eventType = eventData.type;
+                    if (eventData.type === 'deletion_start') eventType = 'start';
+                    else if (eventData.type === 'destroying_vms') eventType = 'executing';
+                    else if (eventData.type === 'releasing_resources') eventType = 'cleanup';
+                    else if (eventData.type === 'deletion_complete') eventType = 'complete';
+                    else if (eventData.type === 'deletion_error') eventType = 'error';
+
+                    addDeletionEvent(eventType, eventData.message);
+
+                    // Actualizar progreso basado en el tipo de evento
+                    if (eventData.type === 'deletion_start') {
+                        updateDeletionProgress(10);
+                    } else if (eventData.type === 'destroying_vms') {
+                        updateDeletionProgress(40);
+                    } else if (eventData.type === 'releasing_resources') {
+                        updateDeletionProgress(70);
+                    } else if (eventData.type === 'deletion_complete') {
+                        updateDeletionProgress(100);
+
+                        document.getElementById('deletion-result-message').className = 'p-4 rounded-lg mb-4 bg-green-100 border-2 border-green-500';
+                        document.getElementById('deletion-result-message').innerHTML = `
+                            <div class="flex items-center gap-2 text-green-700">
+                                <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                                <span class="font-semibold text-lg">¡Eliminación Exitosa!</span>
+                            </div>
+                            <p class="text-sm text-green-600 mt-2">${eventData.message}</p>
+                        `;
+                        document.getElementById('deletion-result').classList.remove('hidden');
+                        document.getElementById('close-deletion-modal-btn').classList.remove('hidden');
+                        lucide.createIcons();
+                    } else if (eventData.type === 'deletion_error') {
+                        updateDeletionProgress(100);
+
+                        document.getElementById('deletion-result-message').className = 'p-4 rounded-lg mb-4 bg-red-100 border-2 border-red-500';
+                        document.getElementById('deletion-result-message').innerHTML = `
+                            <div class="flex items-center gap-2 text-red-700">
+                                <i data-lucide="alert-circle" class="w-6 h-6"></i>
+                                <span class="font-semibold text-lg">Error en la Eliminación</span>
+                            </div>
+                            <p class="text-sm text-red-600 mt-2">${eventData.message}</p>
+                            ${eventData.data.error ? `<p class="text-xs text-red-500 mt-2 font-mono">${eventData.data.error}</p>` : ''}
+                        `;
+                        document.getElementById('deletion-result').classList.remove('hidden');
+                        document.getElementById('close-deletion-modal-btn').classList.remove('hidden');
+                        lucide.createIcons();
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket deletion error:', error);
+                    addDeletionEvent('error', 'Error de conexión WebSocket');
+                };
+
+                ws.onclose = () => {
+                    console.log('WebSocket deletion cerrado');
+                };
+
             } catch (error) {
+                console.error('Error deleting slice:', error);
                 showNotification('Error al eliminar el slice', 'error');
             }
         }

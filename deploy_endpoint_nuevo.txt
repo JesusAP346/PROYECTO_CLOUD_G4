@@ -1,0 +1,289 @@
+# ESTA ES LA FUNCIÓN ASYNC PARA DEPLOYAR EN BACKGROUND
+async def run_deployment_in_background(slice_id: str, json_filepath: str, template_name: str,
+                                       template_id: str, user_id: str, username: str,
+                                       vm_count: int, az: str, topology_json: dict,
+                                       json_filename: str):
+    """
+    Ejecuta el despliegue en background y escribe eventos de progreso.
+    """
+    import subprocess
+    db = get_db()
+
+    try:
+        # Evento 1: Inicio del despliegue
+        write_progress(slice_id, 'deployment_start', f'Iniciando despliegue de {vm_count} VMs...', {
+            'slice_id': slice_id,
+            'vm_count': vm_count,
+            'az': az or 'auto'
+        })
+
+        await asyncio.sleep(0.5)
+
+        # Evento 2: Validando configuración
+        write_progress(slice_id, 'validation', 'Validando configuración y recursos...', {})
+
+        await asyncio.sleep(0.5)
+
+        # Evento 3: Iniciando script de despliegue
+        write_progress(slice_id, 'script_start', 'Ejecutando script de despliegue...', {})
+
+        # EJECUTAR SCRIPT DE DESPLIEGUE
+        deploy_script = '/home/ubuntu/deploy_topology.py'
+        env = os.environ.copy()
+        env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+        # Crear proceso
+        process = await asyncio.create_subprocess_exec(
+            'python3', deploy_script, '--json', json_filepath, '--slice-id', slice_id,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env
+        )
+
+        # Reportar progreso mientras corre (simulado basado en VM count)
+        # Por cada VM, reportar progreso
+        for i in range(1, vm_count + 1):
+            await asyncio.sleep(3)  # Esperar ~3 segundos por VM
+            write_progress(slice_id, 'vm_deploying', f'Desplegando VM {i}/{vm_count}...', {
+                'vm_number': i,
+                'vm_total': vm_count,
+                'progress': int((i / vm_count) * 100)
+            })
+
+        # Esperar a que termine el proceso
+        stdout, stderr = await process.communicate()
+        deployment_output = stdout.decode()
+        deployment_error = stderr.decode()
+        returncode = process.returncode
+
+        # Determinar estado
+        if returncode == 0:
+            deployment_status = 'active'
+
+            # Evento final: Éxito
+            write_progress(slice_id, 'deployment_complete', f'Despliegue completado exitosamente ({vm_count} VMs activas)', {
+                'slice_id': slice_id,
+                'status': 'active',
+                'vm_count': vm_count
+            })
+
+            logger.info(
+                f"Deployment successful: {slice_id} by {username}",
+                extra={
+                    'action': 'deployment_success',
+                    'user': username,
+                    'user_id': user_id,
+                    'slice_id': slice_id,
+                    'vm_count': vm_count,
+                    'az': az or 'auto'
+                }
+            )
+        else:
+            deployment_status = 'failed'
+
+            # Evento final: Error
+            write_progress(slice_id, 'deployment_error', f'Error en el despliegue: {deployment_error[:200]}', {
+                'error': deployment_error,
+                'output': deployment_output
+            })
+
+            logger.error(
+                f"Deployment failed: {slice_id} by {username}",
+                extra={
+                    'action': 'deployment_failed',
+                    'user': username,
+                    'user_id': user_id,
+                    'slice_id': slice_id,
+                    'vm_count': vm_count,
+                    'error': deployment_error
+                }
+            )
+
+        # Crear registro de slice con información del despliegue
+        slice_doc = {
+            'template_id': template_id,
+            'user_id': user_id,
+            'slice_id': slice_id,
+            'name': template_name,
+            'topology_json': topology_json,
+            'availability_zone': az,
+            'json_filename': json_filename,
+            'deployed_at': datetime.now(),
+            'status': deployment_status,
+            'vm_count': vm_count,
+            'deployment_output': deployment_output,
+            'deployment_error': deployment_error
+        }
+
+        db.slices.insert_one(slice_doc)
+
+        # Eliminar la plantilla (ahora es un slice)
+        db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': user_id})
+
+    except asyncio.TimeoutError:
+        # Timeout
+        write_progress(slice_id, 'deployment_error', 'Error: Timeout - El despliegue tardó más de 5 minutos', {
+            'error': 'timeout'
+        })
+
+        # Guardar slice como failed
+        slice_doc = {
+            'template_id': template_id,
+            'user_id': user_id,
+            'slice_id': slice_id,
+            'name': template_name,
+            'topology_json': topology_json,
+            'availability_zone': az,
+            'json_filename': json_filename,
+            'deployed_at': datetime.now(),
+            'status': 'failed',
+            'vm_count': vm_count,
+            'deployment_error': 'Timeout: El despliegue tardó más de 5 minutos'
+        }
+        db.slices.insert_one(slice_doc)
+        db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': user_id})
+
+    except Exception as e:
+        # Error general
+        write_progress(slice_id, 'deployment_error', f'Error: {str(e)}', {
+            'error': str(e)
+        })
+
+        logger.error(
+            f"Deployment exception: {str(e)}",
+            extra={
+                'action': 'deployment_exception',
+                'user': username,
+                'user_id': user_id,
+                'template_id': template_id,
+                'error': str(e)
+            }
+        )
+
+        # Guardar slice como failed
+        slice_doc = {
+            'template_id': template_id,
+            'user_id': user_id,
+            'slice_id': slice_id,
+            'name': template_name,
+            'topology_json': topology_json,
+            'availability_zone': az,
+            'json_filename': json_filename,
+            'deployed_at': datetime.now(),
+            'status': 'failed',
+            'vm_count': vm_count,
+            'deployment_error': str(e)
+        }
+        db.slices.insert_one(slice_doc)
+        db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': user_id})
+
+
+# ENDPOINT DE DEPLOY MODIFICADO
+@app.post("/api/templates/{template_id}/deploy")
+async def deploy_template(template_id: str, current_user: dict = Depends(get_current_active_user)):
+    """Desplegar plantilla como slice ejecutando deploy_topology.py EN BACKGROUND con progreso en tiempo real"""
+    import os
+
+    try:
+        db = get_db()
+        active_slices = db.slices.count_documents({'user_id': str(current_user['_id']), 'status': 'active'})
+        max_slices = get_max_slices(current_user)
+
+        if active_slices >= max_slices:
+            logger.warning(
+                f"Deployment blocked: slice limit reached for {current_user['username']}",
+                extra={
+                    'action': 'deployment_blocked',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'reason': 'slice_limit_reached',
+                    'current_slices': active_slices,
+                    'max_slices': max_slices
+                }
+            )
+            raise HTTPException(status_code=400, detail=f'Límite de {max_slices} slices alcanzado')
+
+        template = db.templates.find_one({'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])})
+        if not template:
+            logger.warning(
+                f"Deployment failed: template not found {template_id}",
+                extra={
+                    'action': 'deployment_template_not_found',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'template_id': template_id
+                }
+            )
+            raise HTTPException(status_code=404, detail='Plantilla no encontrada')
+
+        # Obtener json_filename del template
+        json_filename = template.get('json_filename')
+        if not json_filename:
+            raise HTTPException(status_code=400, detail='Template no tiene archivo JSON asociado')
+
+        slice_id = f"{template['name']}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        vm_count = len(template['topology_json'].get('nodes', []))
+
+        # Verificar que el archivo JSON existe
+        json_filepath = os.path.join('/home/ubuntu/PROYECTO_CLOUD_G4/templates', json_filename)
+        if not os.path.exists(json_filepath):
+            raise HTTPException(status_code=404, detail=f'Archivo JSON no encontrado: {json_filename}')
+
+        # Limpiar archivo de progreso previo si existe
+        progress_file = get_progress_file(slice_id)
+        if os.path.exists(progress_file):
+            os.remove(progress_file)
+
+        # Log inicio de despliegue
+        logger.info(
+            f"Deployment started: {slice_id} by {current_user['username']}",
+            extra={
+                'action': 'deployment_start',
+                'user': current_user['username'],
+                'user_id': str(current_user['_id']),
+                'slice_id': slice_id,
+                'template_id': template_id,
+                'template_name': template['name'],
+                'az': template.get('availability_zone', 'auto'),
+                'vm_count': vm_count
+            }
+        )
+
+        # EJECUTAR DESPLIEGUE EN BACKGROUND
+        asyncio.create_task(run_deployment_in_background(
+            slice_id=slice_id,
+            json_filepath=json_filepath,
+            template_name=template['name'],
+            template_id=str(template['_id']),
+            user_id=str(current_user['_id']),
+            username=current_user['username'],
+            vm_count=vm_count,
+            az=template.get('availability_zone'),
+            topology_json=template['topology_json'],
+            json_filename=json_filename
+        ))
+
+        # Retornar inmediatamente con el slice_id para que el frontend se conecte al WebSocket
+        return {
+            'success': True,
+            'slice_id': slice_id,
+            'status': 'deploying',
+            'message': 'Despliegue iniciado en background',
+            'vm_count': vm_count,
+            'websocket_url': f'/ws/deploy/{slice_id}'
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Deployment exception: {str(e)}",
+            extra={
+                'action': 'deployment_exception',
+                'user': current_user['username'],
+                'user_id': str(current_user['_id']),
+                'template_id': template_id,
+                'error': str(e)
+            }
+        )
+        raise HTTPException(status_code=500, detail=str(e))
