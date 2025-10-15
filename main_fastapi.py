@@ -1152,12 +1152,73 @@ async def deploy_template(template_id: str, current_user: dict = Depends(get_cur
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
+# FUNCIÓN DE SINCRONIZACIÓN GLOBAL
+# ==========================================
+
+def sync_mongodb_with_vlans():
+    """
+    Sincroniza TODOS los slices de MongoDB con vlans.json (GLOBAL).
+    Elimina de MongoDB los slices que fueron purgados manualmente.
+    Retorna cantidad de slices eliminados.
+    """
+    import os
+    db = get_db()
+    vlans_file = '/home/ubuntu/.orchestrator/vlans.json'
+    active_slice_ids = set()
+
+    # 1. Leer vlans.json para obtener slices que existen físicamente
+    try:
+        if os.path.exists(vlans_file):
+            with open(vlans_file, 'r', encoding='utf-8') as f:
+                vlans_data = json.load(f)
+                active_slice_ids = set(vlans_data.get('slices', {}).keys())
+    except Exception as e:
+        logger.warning(f"Error reading vlans.json for global sync: {e}")
+        return 0  # Si falla, no sincronizar
+
+    # 2. Obtener TODOS los slices de MongoDB (de todos los usuarios)
+    all_slices = list(db.slices.find())
+
+    # 3. Eliminar slices fantasma (que están en MongoDB pero NO en vlans.json)
+    removed_count = 0
+    for slice_doc in all_slices:
+        slice_id = slice_doc.get('slice_id')
+        if slice_id and slice_id not in active_slice_ids:
+            # Slice purgado manualmente - eliminarlo
+            db.slices.delete_one({'_id': slice_doc['_id']})
+            removed_count += 1
+
+            logger.info(
+                f"Global sync: Removed orphan slice {slice_id} (user: {slice_doc.get('user_id', 'unknown')})",
+                extra={
+                    'action': 'global_slice_sync_cleanup',
+                    'slice_id': slice_id,
+                    'user_id': slice_doc.get('user_id')
+                }
+            )
+
+    # Log resumen si hubo limpieza
+    if removed_count > 0:
+        logger.info(
+            f"Global sync completed: removed {removed_count} orphan slices from all users",
+            extra={
+                'action': 'global_slice_sync_summary',
+                'removed_count': removed_count
+            }
+        )
+
+    return removed_count
+
+# ==========================================
 # ENDPOINTS DE SLICES
 # ==========================================
 
 @app.get("/api/slices")
 async def get_slices(current_user: dict = Depends(get_current_active_user)):
-    """Obtener slices del usuario"""
+    """Obtener slices del usuario con sincronización GLOBAL automática"""
+    # Sincronizar TODOS los slices de TODOS los usuarios
+    sync_mongodb_with_vlans()
+
     db = get_db()
     slices = list(db.slices.find({'user_id': str(current_user['_id'])}).sort('deployed_at', -1))
 
@@ -1419,11 +1480,14 @@ async def get_all_templates(current_user: dict = Depends(get_current_active_user
 
 @app.get("/api/admin/slices")
 async def get_all_slices(current_user: dict = Depends(get_current_active_user)):
-    """Obtener todos los slices de todos los usuarios (solo admin)"""
+    """Obtener todos los slices de todos los usuarios (solo admin) con sincronización GLOBAL"""
     if current_user.get('role') != 'admin':
         raise HTTPException(status_code=403, detail="Acceso denegado: requiere rol de administrador")
 
     try:
+        # Sincronizar TODOS los slices de TODOS los usuarios
+        sync_mongodb_with_vlans()
+
         db = get_db()
         # Obtener todos los slices con info del usuario
         slices = list(db.slices.find().sort('deployed_at', -1))
