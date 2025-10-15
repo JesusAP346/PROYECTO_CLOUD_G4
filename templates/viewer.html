@@ -8,6 +8,43 @@
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Context Menu */
+        #context-menu {
+            position: fixed;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            padding: 4px 0;
+            z-index: 9999;
+            min-width: 180px;
+        }
+
+        #context-menu.hidden {
+            display: none;
+        }
+
+        .context-menu-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #374151;
+            transition: background-color 0.15s;
+        }
+
+        .context-menu-item:hover {
+            background-color: #f3f4f6;
+        }
+
+        .context-menu-item i {
+            width: 16px;
+            height: 16px;
+        }
+    </style>
 </head>
 <body class="bg-gradient-to-br from-slate-50 to-slate-100 p-6 min-h-screen">
     <div class="max-w-7xl mx-auto">
@@ -16,9 +53,9 @@
                 <h1 class="text-3xl font-bold text-gray-800 mb-2">Visor de Slice</h1>
                 <p class="text-gray-600">Visualización en modo solo lectura - <span id="slice-name-display" class="font-semibold text-indigo-600"></span></p>
             </div>
-            <div class="flex items-center gap-2 px-4 py-2 bg-yellow-100 border-l-4 border-yellow-500 rounded">
-                <i data-lucide="lock" class="w-5 h-5 text-yellow-700"></i>
-                <span class="text-sm font-semibold text-yellow-700">MODO SOLO LECTURA</span>
+            <div class="flex items-center gap-2 px-4 py-2 bg-blue-100 border-l-4 border-blue-500 rounded">
+                <i data-lucide="info" class="w-5 h-5 text-blue-700"></i>
+                <span class="text-sm font-semibold text-blue-700">MODO VISUALIZACIÓN - Puedes mover nodos arrastrándolos</span>
             </div>
         </div>
 
@@ -106,6 +143,14 @@
         </div>
     </div>
 
+    <!-- Context Menu (Right-Click) -->
+    <div id="context-menu" class="hidden">
+        <div class="context-menu-item" id="menu-open-vnc">
+            <i data-lucide="monitor"></i>
+            <span>Abrir Terminal VNC</span>
+        </div>
+    </div>
+
     <script>
         // Verificar autenticación
         if (!localStorage.getItem('access_token')) {
@@ -138,6 +183,16 @@
         let translateY = 0;
         let isPanning = false;
         let startPanX, startPanY;
+
+        // Variables para drag de nodos (solo movimiento visual)
+        let isDraggingNode = false;
+        let draggedNode = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        // Variables para context menu
+        let contextMenuNode = null;
+        const contextMenu = document.getElementById('context-menu');
 
         // Elementos del DOM
         const svgContainer = document.querySelector('.svg-container');
@@ -180,7 +235,7 @@
                 }
             });
 
-            // Dibujar nodos (SIN selección ni drag)
+            // Dibujar nodos (CON drag para mover visualmente)
             state.nodes.forEach(node => {
                 const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 circle.setAttribute('cx', node.x);
@@ -188,22 +243,37 @@
                 circle.setAttribute('r', '30');
                 circle.setAttribute('fill', '#3b82f6');
                 circle.setAttribute('stroke', 'none');
-                circle.style.cursor = 'default'; // No es clickeable
+                circle.style.cursor = 'move'; // Indicar que se puede mover
+                circle.dataset.nodeId = node.id; // Para identificarlo
 
                 // Tooltip con información
                 const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
                 title.textContent = `${node.label}\n${node.flavor.vcpus} vCPU, ${node.flavor.ram}GB RAM, ${node.flavor.disk}GB Disk\nImagen: ${node.image || 'ubuntu'}\nInternet: ${node.internet_access !== false ? 'Sí' : 'No'}`;
                 circle.appendChild(title);
 
+                // Evento para iniciar drag del nodo (click izquierdo)
+                circle.addEventListener('mousedown', (e) => {
+                    if (e.button === 0) { // Solo click izquierdo
+                        startNodeDrag(e, node);
+                    }
+                });
+
+                // Evento para context menu (click derecho)
+                circle.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    showContextMenu(e, node);
+                });
+
                 svgGroup.appendChild(circle);
 
-                // Icono de servidor
+                // Icono de servidor (también arrastrable)
                 const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
                 foreignObject.setAttribute('x', node.x - 15);
                 foreignObject.setAttribute('y', node.y - 15);
                 foreignObject.setAttribute('width', '30');
                 foreignObject.setAttribute('height', '30');
-                foreignObject.style.pointerEvents = 'none';
+                foreignObject.style.pointerEvents = 'none'; // El icono no captura eventos
+                foreignObject.style.cursor = 'move';
 
                 const div = document.createElement('div');
                 div.className = 'flex items-center justify-center h-full';
@@ -211,13 +281,28 @@
                 foreignObject.appendChild(div);
                 svgGroup.appendChild(foreignObject);
 
-                // Etiqueta del nodo
+                // Etiqueta del nodo (también arrastrable)
                 const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 text.setAttribute('x', node.x);
                 text.setAttribute('y', node.y + 50);
                 text.setAttribute('text-anchor', 'middle');
                 text.setAttribute('class', 'text-xs font-semibold fill-gray-700 select-none');
+                text.style.cursor = 'move';
                 text.textContent = node.label;
+
+                // Hacer la etiqueta arrastrable también (click izquierdo)
+                text.addEventListener('mousedown', (e) => {
+                    if (e.button === 0) {
+                        startNodeDrag(e, node);
+                    }
+                });
+
+                // Context menu en la etiqueta también
+                text.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    showContextMenu(e, node);
+                });
+
                 svgGroup.appendChild(text);
             });
 
@@ -306,7 +391,47 @@
             applyZoom();
         }
 
+        // Funciones de drag de nodos (solo movimiento visual)
+        function startNodeDrag(event, node) {
+            event.stopPropagation(); // Evitar que active el pan
+            isDraggingNode = true;
+            draggedNode = node;
+
+            // Calcular offset considerando zoom y pan
+            const rect = svgContainer.getBoundingClientRect();
+            const svgX = (event.clientX - rect.left - translateX) / scale;
+            const svgY = (event.clientY - rect.top - translateY) / scale;
+
+            dragOffsetX = svgX - node.x;
+            dragOffsetY = svgY - node.y;
+
+            event.preventDefault();
+        }
+
+        function doNodeDrag(event) {
+            if (!isDraggingNode || !draggedNode) return;
+
+            const rect = svgContainer.getBoundingClientRect();
+            const svgX = (event.clientX - rect.left - translateX) / scale;
+            const svgY = (event.clientY - rect.top - translateY) / scale;
+
+            // Actualizar posición del nodo
+            draggedNode.x = svgX - dragOffsetX;
+            draggedNode.y = svgY - dragOffsetY;
+
+            // Redibujar (para actualizar líneas y posición del nodo)
+            drawTopology();
+        }
+
+        function stopNodeDrag() {
+            isDraggingNode = false;
+            draggedNode = null;
+        }
+
         function startPan(event) {
+            // No iniciar pan si se está arrastrando un nodo
+            if (isDraggingNode) return;
+
             isPanning = true;
             startPanX = event.clientX - translateX;
             startPanY = event.clientY - translateY;
@@ -315,6 +440,12 @@
         }
 
         function doPan(event) {
+            // Priorizar drag de nodo sobre pan
+            if (isDraggingNode) {
+                doNodeDrag(event);
+                return;
+            }
+
             if (!isPanning) return;
             translateX = event.clientX - startPanX;
             translateY = event.clientY - startPanY;
@@ -324,6 +455,95 @@
         function stopPan() {
             isPanning = false;
             svgContainer.style.cursor = 'grab';
+            stopNodeDrag();
+        }
+
+        // Context Menu Functions
+        function showContextMenu(event, node) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            contextMenuNode = node;
+
+            // Posicionar el menú en la posición del mouse
+            contextMenu.style.left = `${event.clientX}px`;
+            contextMenu.style.top = `${event.clientY}px`;
+            contextMenu.classList.remove('hidden');
+
+            // Reinicializar iconos de Lucide para el menú
+            lucide.createIcons();
+        }
+
+        function hideContextMenu() {
+            contextMenu.classList.add('hidden');
+            contextMenuNode = null;
+        }
+
+        async function openVNCTerminal(node) {
+            if (!node || !sliceId) {
+                alert('Error: No se pudo identificar el nodo o slice');
+                return;
+            }
+
+            try {
+                // Mostrar loading (opcional)
+                const menuItem = document.getElementById('menu-open-vnc');
+                const originalText = menuItem.querySelector('span').textContent;
+                menuItem.querySelector('span').textContent = 'Cargando...';
+
+                // Obtener info VNC del slice
+                const token = localStorage.getItem('access_token');
+                const response = await fetch(`/api/slices/${sliceId}/vnc-info`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Error al obtener información VNC');
+                }
+
+                const data = await response.json();
+
+                // Buscar la VM correspondiente al nodo
+                // El label del nodo tiene formato "VM-1", "VM-2", etc.
+                // Las VMs en la respuesta tienen nombres como "vm1-163437", "vm2-163437"
+                const nodeNumber = node.label.replace(/\D/g, ''); // Extraer número
+                const vmInfo = data.vms.find(vm => vm.vm.startsWith(`vm${nodeNumber}-`));
+
+                if (!vmInfo) {
+                    throw new Error(`No se encontró información VNC para ${node.label}`);
+                }
+
+                if (vmInfo.error) {
+                    throw new Error(`Error en VM: ${vmInfo.error}`);
+                }
+
+                // Construir URL de noVNC con websockify token-based routing
+                // Formato: http://10.20.12.158:6080/vnc.html?path=?token=5904&autoconnect=true
+                // El token corresponde al puerto público VNC (definido en websockify targets.conf)
+                const vncHost = '10.20.12.158'; // Gateway/Head Node
+                const vncPort = vmInfo.public_port;
+                const vncUrl = `http://${vncHost}:6080/vnc.html?path=?token=${vncPort}&autoconnect=true`;
+
+                // Abrir en nueva pestaña
+                window.open(vncUrl, '_blank');
+
+                // Restaurar texto del menú
+                menuItem.querySelector('span').textContent = originalText;
+                hideContextMenu();
+
+            } catch (error) {
+                console.error('Error abriendo terminal VNC:', error);
+                alert(`Error al abrir terminal VNC: ${error.message}`);
+
+                // Restaurar texto del menú
+                const menuItem = document.getElementById('menu-open-vnc');
+                menuItem.querySelector('span').textContent = 'Abrir Terminal VNC';
+            }
         }
 
         // Exportar funciones
@@ -377,6 +597,24 @@
         svgContainer.addEventListener('mousedown', startPan);
         document.addEventListener('mousemove', doPan);
         document.addEventListener('mouseup', stopPan);
+
+        // Context Menu Event Listeners
+        document.getElementById('menu-open-vnc').addEventListener('click', () => {
+            if (contextMenuNode) {
+                openVNCTerminal(contextMenuNode);
+            }
+        });
+
+        // Cerrar context menu al hacer click en cualquier lugar
+        document.addEventListener('click', hideContextMenu);
+
+        // Prevenir context menu del navegador en el SVG container
+        svgContainer.addEventListener('contextmenu', (e) => {
+            // Solo prevenir si no es un nodo (el evento del nodo ya tiene preventDefault)
+            if (!e.target.closest('circle') && !e.target.closest('text')) {
+                e.preventDefault();
+            }
+        });
 
         // Inicializar
         document.addEventListener('DOMContentLoaded', function() {

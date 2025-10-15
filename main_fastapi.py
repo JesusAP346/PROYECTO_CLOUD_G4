@@ -11,6 +11,10 @@ from typing import Optional
 from bson import ObjectId
 import json
 from datetime import datetime
+import logging
+import sys
+from logging.handlers import RotatingFileHandler
+import os
 
 # Imports de autenticación JWT
 from auth_jwt import (
@@ -26,6 +30,72 @@ from database.mongo_config import get_db
 import math
 
 # ==========================================
+# CONFIGURACIÓN DE LOGGING PARA LOKI
+# ==========================================
+
+class JSONFormatter(logging.Formatter):
+    """Formateador de logs en JSON para Loki"""
+    def format(self, record):
+        from datetime import timezone
+        log_data = {
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno
+        }
+
+        # Agregar información adicional si existe
+        if hasattr(record, 'user'):
+            log_data['user'] = record.user
+        if hasattr(record, 'action'):
+            log_data['action'] = record.action
+        if hasattr(record, 'ip'):
+            log_data['ip'] = record.ip
+        if hasattr(record, 'slice_id'):
+            log_data['slice_id'] = record.slice_id
+        if hasattr(record, 'user_id'):
+            log_data['user_id'] = record.user_id
+        if hasattr(record, 'role'):
+            log_data['role'] = record.role
+        if hasattr(record, 'duration'):
+            log_data['duration_seconds'] = record.duration
+
+        return json.dumps(log_data)
+
+# Crear logger
+logger = logging.getLogger("telecloud")
+logger.setLevel(logging.INFO)
+
+# Asegurar que el directorio de logs existe
+log_dir = '/var/log/telecloud'
+os.makedirs(log_dir, exist_ok=True)
+
+# Handler para archivo (JSON)
+file_handler = RotatingFileHandler(
+    os.path.join(log_dir, 'app.log'),
+    maxBytes=10485760,  # 10MB
+    backupCount=5
+)
+file_handler.setFormatter(JSONFormatter())
+file_handler.setLevel(logging.INFO)
+
+# Handler para consola (texto legible)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+))
+console_handler.setLevel(logging.INFO)
+
+# Agregar handlers
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+logger.info("TELECLOUD FastAPI application starting", extra={'action': 'app_start'})
+
+# ==========================================
 # INICIALIZACIÓN FASTAPI
 # ==========================================
 
@@ -36,6 +106,52 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Templates
 templates = Jinja2Templates(directory="templates")
+
+# ==========================================
+# MIDDLEWARE PARA LOGGING DE REQUESTS
+# ==========================================
+
+import time
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Middleware que registra todas las peticiones HTTP"""
+    start_time = time.time()
+
+    # Obtener información del cliente
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Log de inicio de request
+    logger.info(
+        f"HTTP Request: {request.method} {request.url.path}",
+        extra={
+            'action': 'http_request',
+            'ip': client_ip,
+            'method': request.method,
+            'path': request.url.path
+        }
+    )
+
+    # Procesar la request
+    response = await call_next(request)
+
+    # Calcular duración
+    duration = time.time() - start_time
+
+    # Log de respuesta
+    logger.info(
+        f"HTTP Response: {response.status_code} - {request.method} {request.url.path}",
+        extra={
+            'action': 'http_response',
+            'ip': client_ip,
+            'method': request.method,
+            'path': request.url.path,
+            'status_code': response.status_code,
+            'duration': round(duration, 3)
+        }
+    )
+
+    return response
 
 # ==========================================
 # CLASE DE TOPOLOGÍA (de app_mongo.py)
@@ -295,11 +411,48 @@ topology = NetworkTopology()
 # ==========================================
 
 @app.post("/api/auth/register", response_model=dict)
-async def register(user_data: UserCreate):
+async def register(user_data: UserCreate, request: Request):
     """Registro de nuevo usuario"""
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Log intento de registro
+    logger.info(
+        f"Registration attempt: {user_data.username}",
+        extra={
+            'action': 'auth_register_attempt',
+            'user': user_data.username,
+            'email': user_data.email,
+            'role': user_data.role,
+            'ip': client_ip
+        }
+    )
+
     user, error = create_user(user_data)
     if error:
+        # Log registro fallido
+        logger.warning(
+            f"Registration failed: {user_data.username} - {error}",
+            extra={
+                'action': 'auth_register_failed',
+                'user': user_data.username,
+                'email': user_data.email,
+                'error': error,
+                'ip': client_ip
+            }
+        )
         raise HTTPException(status_code=400, detail=error)
+
+    # Log registro exitoso
+    logger.info(
+        f"Registration successful: {user['username']} (ID: {str(user['_id'])})",
+        extra={
+            'action': 'auth_register_success',
+            'user': user['username'],
+            'user_id': str(user['_id']),
+            'role': user['role'],
+            'ip': client_ip
+        }
+    )
 
     return {
         "success": True,
@@ -313,10 +466,32 @@ async def register(user_data: UserCreate):
     }
 
 @app.post("/api/auth/login", response_model=Token)
-async def login(user_credentials: UserLogin):
+async def login(user_credentials: UserLogin, request: Request):
     """Login con JWT"""
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Log intento de login
+    logger.info(
+        f"Login attempt: {user_credentials.username}",
+        extra={
+            'action': 'auth_login_attempt',
+            'user': user_credentials.username,
+            'ip': client_ip
+        }
+    )
+
     user = authenticate_user(user_credentials.username, user_credentials.password)
     if not user:
+        # Log login fallido
+        logger.warning(
+            f"Login failed: {user_credentials.username} - Invalid credentials",
+            extra={
+                'action': 'auth_login_failed',
+                'user': user_credentials.username,
+                'ip': client_ip,
+                'reason': 'invalid_credentials'
+            }
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Usuario o contraseña incorrectos",
@@ -326,6 +501,18 @@ async def login(user_credentials: UserLogin):
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(user['_id'])}, expires_delta=access_token_expires
+    )
+
+    # Log login exitoso
+    logger.info(
+        f"Login successful: {user['username']} (ID: {str(user['_id'])})",
+        extra={
+            'action': 'auth_login_success',
+            'user': user['username'],
+            'user_id': str(user['_id']),
+            'role': user['role'],
+            'ip': client_ip
+        }
     )
 
     return {
@@ -475,6 +662,20 @@ async def save_topology(data: dict, current_user: dict = Depends(get_current_act
                 }}
             )
             message = "Plantilla actualizada"
+
+            # Log actualización de template
+            logger.info(
+                f"Template updated: {name} by {current_user['username']}",
+                extra={
+                    'action': 'template_update',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'template_id': template_id,
+                    'template_name': name,
+                    'az': az,
+                    'node_count': len(topology_json['nodes'])
+                }
+            )
         else:
             result = db.templates.insert_one({
                 'user_id': str(current_user['_id']),
@@ -488,6 +689,21 @@ async def save_topology(data: dict, current_user: dict = Depends(get_current_act
             template_id = str(result.inserted_id)
             message = "Plantilla guardada"
 
+            # Log creación de template
+            logger.info(
+                f"Template created: {name} by {current_user['username']}",
+                extra={
+                    'action': 'template_create',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'template_id': template_id,
+                    'template_name': name,
+                    'az': az,
+                    'node_count': len(topology_json['nodes']),
+                    'json_filename': filename
+                }
+            )
+
         return {
             'success': True,
             'message': message,
@@ -496,6 +712,16 @@ async def save_topology(data: dict, current_user: dict = Depends(get_current_act
             'filepath': filepath
         }
     except Exception as e:
+        # Log error al guardar template
+        logger.error(
+            f"Template save error: {str(e)}",
+            extra={
+                'action': 'template_save_error',
+                'user': current_user['username'],
+                'user_id': str(current_user['_id']),
+                'error': str(e)
+            }
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/topology/state")
@@ -713,9 +939,38 @@ async def delete_template(template_id: str, current_user: dict = Depends(get_cur
     """Eliminar plantilla"""
     try:
         db = get_db()
-        db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])})
+
+        # Obtener info del template antes de eliminar
+        template = db.templates.find_one({'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])})
+
+        result = db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])})
+
+        if result.deleted_count > 0:
+            # Log eliminación exitosa
+            logger.info(
+                f"Template deleted: {template.get('name', 'unknown')} by {current_user['username']}",
+                extra={
+                    'action': 'template_delete',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'template_id': template_id,
+                    'template_name': template.get('name', 'unknown') if template else 'unknown'
+                }
+            )
+
         return {'success': True}
     except Exception as e:
+        # Log error al eliminar
+        logger.error(
+            f"Template delete error: {str(e)}",
+            extra={
+                'action': 'template_delete_error',
+                'user': current_user['username'],
+                'user_id': str(current_user['_id']),
+                'template_id': template_id,
+                'error': str(e)
+            }
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/templates/{template_id}/deploy")
@@ -723,16 +978,38 @@ async def deploy_template(template_id: str, current_user: dict = Depends(get_cur
     """Desplegar plantilla como slice ejecutando deploy_topology.py"""
     import subprocess
     import os
+    deploy_start_time = time.time()
+
     try:
         db = get_db()
         active_slices = db.slices.count_documents({'user_id': str(current_user['_id']), 'status': 'active'})
         max_slices = get_max_slices(current_user)
 
         if active_slices >= max_slices:
+            logger.warning(
+                f"Deployment blocked: slice limit reached for {current_user['username']}",
+                extra={
+                    'action': 'deployment_blocked',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'reason': 'slice_limit_reached',
+                    'current_slices': active_slices,
+                    'max_slices': max_slices
+                }
+            )
             raise HTTPException(status_code=400, detail=f'Límite de {max_slices} slices alcanzado')
 
         template = db.templates.find_one({'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])})
         if not template:
+            logger.warning(
+                f"Deployment failed: template not found {template_id}",
+                extra={
+                    'action': 'deployment_template_not_found',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'template_id': template_id
+                }
+            )
             raise HTTPException(status_code=404, detail='Plantilla no encontrada')
 
         # Obtener json_filename del template
@@ -742,6 +1019,21 @@ async def deploy_template(template_id: str, current_user: dict = Depends(get_cur
 
         slice_id = f"{template['name']}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         vm_count = len(template['topology_json'].get('nodes', []))
+
+        # Log inicio de despliegue
+        logger.info(
+            f"Deployment started: {slice_id} by {current_user['username']}",
+            extra={
+                'action': 'deployment_start',
+                'user': current_user['username'],
+                'user_id': str(current_user['_id']),
+                'slice_id': slice_id,
+                'template_id': template_id,
+                'template_name': template['name'],
+                'az': template.get('availability_zone', 'auto'),
+                'vm_count': vm_count
+            }
+        )
 
         # Verificar que el archivo JSON existe
         json_filepath = os.path.join('/home/ubuntu/PROYECTO_CLOUD_G4/templates', json_filename)
@@ -804,6 +1096,37 @@ async def deploy_template(template_id: str, current_user: dict = Depends(get_cur
         # Eliminar la plantilla (ahora es un slice)
         db.templates.delete_one({'_id': ObjectId(template_id), 'user_id': str(current_user['_id'])})
 
+        # Calcular duración del despliegue
+        deploy_duration = time.time() - deploy_start_time
+
+        # Log resultado del despliegue
+        if deployment_status == 'active':
+            logger.info(
+                f"Deployment successful: {slice_id} by {current_user['username']}",
+                extra={
+                    'action': 'deployment_success',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'slice_id': slice_id,
+                    'vm_count': vm_count,
+                    'az': template.get('availability_zone', 'auto'),
+                    'duration': round(deploy_duration, 2)
+                }
+            )
+        else:
+            logger.error(
+                f"Deployment failed: {slice_id} by {current_user['username']}",
+                extra={
+                    'action': 'deployment_failed',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'slice_id': slice_id,
+                    'vm_count': vm_count,
+                    'error': deployment_error,
+                    'duration': round(deploy_duration, 2)
+                }
+            )
+
         return {
             'success': deployment_status != 'failed',
             'slice_id': slice_id,
@@ -815,6 +1138,17 @@ async def deploy_template(template_id: str, current_user: dict = Depends(get_cur
     except HTTPException:
         raise
     except Exception as e:
+        # Log error general del despliegue
+        logger.error(
+            f"Deployment exception: {str(e)}",
+            extra={
+                'action': 'deployment_exception',
+                'user': current_user['username'],
+                'user_id': str(current_user['_id']),
+                'template_id': template_id,
+                'error': str(e)
+            }
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
@@ -833,18 +1167,100 @@ async def get_slices(current_user: dict = Depends(get_current_active_user)):
 
     return {"slices": slices}
 
+@app.get("/api/slices/{slice_id}/vnc-info")
+async def get_slice_vnc_info(slice_id: str, current_user: dict = Depends(get_current_active_user)):
+    """Obtener información VNC de las VMs de un slice ejecutando mapeo_vms.sh"""
+    import subprocess
+    try:
+        # Verificar que el slice pertenece al usuario (seguridad)
+        # El parámetro slice_id puede ser el _id de MongoDB o el slice_id real
+        db = get_db()
+
+        # Intentar buscar por _id primero (viene del viewer/dashboard)
+        try:
+            slice_doc = db.slices.find_one({'_id': ObjectId(slice_id), 'user_id': str(current_user['_id'])})
+        except:
+            # Si falla (no es ObjectId válido), buscar por slice_id
+            slice_doc = db.slices.find_one({'slice_id': slice_id, 'user_id': str(current_user['_id'])})
+
+        if not slice_doc:
+            raise HTTPException(status_code=404, detail='Slice no encontrado')
+
+        # Extraer el slice_id real del documento (el que usa mapeo_vms.sh)
+        real_slice_id = slice_doc.get('slice_id')
+        if not real_slice_id:
+            raise HTTPException(status_code=500, detail='Slice sin slice_id válido')
+
+        # Ejecutar mapeo_vms.sh con output JSON usando el slice_id REAL
+        mapeo_script = '/home/ubuntu/mapeo_vms.sh'
+
+        # Agregar PATH completo para que encuentre SSH
+        import os
+        env = os.environ.copy()
+        env['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+        result = subprocess.run(
+            ['python3', mapeo_script, '--json', '--slice-id', real_slice_id],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env
+        )
+
+        if result.returncode != 0:
+            raise HTTPException(status_code=500, detail=f'Error ejecutando mapeo_vms.sh: {result.stderr}')
+
+        # Parse JSON output
+        vnc_data = json.loads(result.stdout)
+
+        return {
+            'success': True,
+            'slice_id': vnc_data['slice_id'],
+            'vms': vnc_data['results']
+        }
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail='Timeout al obtener info VNC')
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f'Error parseando JSON de mapeo_vms.sh: {str(e)}')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/api/slices/{slice_id}")
 async def delete_slice(slice_id: str, current_user: dict = Depends(get_current_active_user)):
     """Eliminar slice ejecutando eliminar_slice.sh (destruye VMs y libera recursos)"""
     import subprocess
     import os
+    delete_start_time = time.time()
+
     try:
         db = get_db()
 
         # Verificar que el slice existe y pertenece al usuario
         slice_doc = db.slices.find_one({'slice_id': slice_id, 'user_id': str(current_user['_id'])})
         if not slice_doc:
+            logger.warning(
+                f"Slice deletion failed: slice not found {slice_id}",
+                extra={
+                    'action': 'slice_delete_not_found',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'slice_id': slice_id
+                }
+            )
             raise HTTPException(status_code=404, detail='Slice no encontrado')
+
+        # Log inicio de eliminación
+        logger.info(
+            f"Slice deletion started: {slice_id} by {current_user['username']}",
+            extra={
+                'action': 'slice_delete_start',
+                'user': current_user['username'],
+                'user_id': str(current_user['_id']),
+                'slice_id': slice_id,
+                'vm_count': slice_doc.get('vm_count', 0)
+            }
+        )
 
         # EJECUTAR SCRIPT DE ELIMINACIÓN (ruta absoluta en Head Node)
         delete_script = '/home/ubuntu/eliminar_slice.sh'
@@ -888,6 +1304,19 @@ async def delete_slice(slice_id: str, current_user: dict = Depends(get_current_a
             error_detail += f"=== STDERR ===\n{deletion_error}\n\n"
             error_detail += f"=== Return Code ===\n{result.returncode}"
 
+            # Log fallo de eliminación
+            logger.error(
+                f"Slice deletion failed: {slice_id} by {current_user['username']}",
+                extra={
+                    'action': 'slice_delete_failed',
+                    'user': current_user['username'],
+                    'user_id': str(current_user['_id']),
+                    'slice_id': slice_id,
+                    'error': deletion_error,
+                    'return_code': result.returncode
+                }
+            )
+
             # Actualizar el slice con información del error
             db.slices.update_one(
                 {'slice_id': slice_id, 'user_id': str(current_user['_id'])},
@@ -906,6 +1335,21 @@ async def delete_slice(slice_id: str, current_user: dict = Depends(get_current_a
         # Si exitoso, eliminar de MongoDB
         db.slices.delete_one({'slice_id': slice_id, 'user_id': str(current_user['_id'])})
 
+        # Calcular duración
+        delete_duration = time.time() - delete_start_time
+
+        # Log éxito de eliminación
+        logger.info(
+            f"Slice deletion successful: {slice_id} by {current_user['username']}",
+            extra={
+                'action': 'slice_delete_success',
+                'user': current_user['username'],
+                'user_id': str(current_user['_id']),
+                'slice_id': slice_id,
+                'duration': round(delete_duration, 2)
+            }
+        )
+
         return {
             'success': True,
             'message': 'Slice eliminado correctamente (VMs destruidas y recursos liberados)',
@@ -915,6 +1359,17 @@ async def delete_slice(slice_id: str, current_user: dict = Depends(get_current_a
     except HTTPException:
         raise
     except Exception as e:
+        # Log excepción general
+        logger.error(
+            f"Slice deletion exception: {str(e)}",
+            extra={
+                'action': 'slice_delete_exception',
+                'user': current_user['username'],
+                'user_id': str(current_user['_id']),
+                'slice_id': slice_id,
+                'error': str(e)
+            }
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
