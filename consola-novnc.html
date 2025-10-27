@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Consola noVNC - Cyberpunk</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Tipografía futurista -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --primary: #00fff7;
+      --secondary: #9f3bff;
+      --accent: #f4ff4d;
+      --bg: #000000;
+      --text: #ffffff;
+      --font: 'Orbitron', sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background-color: var(--bg);
+      font-family: var(--font);
+      color: var(--text);
+    }
+
+    .container {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 320px;
+      padding: 20px;
+      background: #0a0a0a;
+    }
+
+    .vm-info {
+      font-size: 18px;
+      margin-bottom: 5px;
+    }
+
+    .vm-info strong {
+      color: var(--accent);
+      font-size: 40px;
+    }
+
+    .vm-status {
+      margin-top: 4px;
+      font-size: 14px;
+      color: var(--primary);
+    }
+
+    .status-section h3 {
+      color: var(--accent);
+      margin-top: 20px;
+    }
+
+    .section-title {
+    color: var(--accent);
+    margin-top: 20px;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      font-size: 14px;
+      margin: 4px 0;
+    }
+
+    .status-line::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      background: var(--accent);
+      margin-right: 10px;
+    }
+
+    canvas {
+      margin-top: 10px;
+      background: #111;
+      border: 1px solid var(--primary);
+    }
+
+    .bar-label {
+      margin-top: 10px;
+      font-size: 14px;
+    }
+
+    .bar-container {
+      background: #222;
+      border: 1px solid var(--primary);
+      height: 18px;
+      width: 100%;
+      position: relative;
+      margin-top: 4px;
+    }
+
+    .bar-fill {
+      background: var(--primary);
+      height: 100%;
+    }
+
+    .bar-percent {
+      position: absolute;
+      right: 5px;
+      top: 0;
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .terminal {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+    }
+
+    .terminal-frame {
+      flex: 1;
+      border: 4px solid var(--primary);
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    #noVNC_container {
+      width: 100%;
+      height: 100%;
+    }
+
+    .bottom-controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      padding: 15px;
+      background: #111;
+      border-top: 2px solid var(--primary);
+    }
+
+    .noVNC_button {
+      background: var(--primary);
+      color: #000;
+      font-family: var(--font);
+      font-size: 12px;
+      font-weight: bold;
+      border: none;
+      padding: 10px 14px;
+      width: auto;
+      min-width: 100px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .noVNC_button:hover {
+      background: var(--secondary);
+      color: #fff;
+    }
+  </style>
+
+  <!-- noVNC scripts -->
+  <script type="module">
+    import UI from "./app/ui.js";
+    import * as Log from './core/util/logging.js';
+
+    let defaults = {}, mandatory = {};
+
+    try {
+      const res = await fetch('./defaults.json');
+      if (res.ok) defaults = await res.json();
+    } catch (err) {
+      Log.Error("No defaults.json: " + err);
+    }
+
+    try {
+      const res = await fetch('./mandatory.json');
+      if (res.ok) mandatory = await res.json();
+    } catch (err) {
+      Log.Error("No mandatory.json: " + err);
+    }
+
+    UI.start({ settings: { defaults, mandatory } });
+  </script>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Sidebar izquierda -->
+    <div class="sidebar">
+      <div class="vm-info">
+        <strong id="vm-id">VM-4</strong><br>
+        <span id="slice-name">Nombre del Slice</span>
+        <div class="vm-status" id="vm-status">CONECTADA</div>
+      </div>
+
+      <div class="status-section">
+        <h3>ESTADO DE RED</h3>
+        <div class="status-line">Internet Acces</div>
+        <div class="status-line">192.168.10.98</div>
+
+        <h3>TRÁFICO</h3>
+        <canvas id="netChart" width="250" height="100"></canvas>
+      </div>
+
+      <h3 class="section-title">USO DE MEMORIA</h3>
+      <div class="bar-container">
+        <div class="bar-fill" id="mem-bar"></div>
+        <span class="bar-percent" id="mem-percent"></span>
+      </div>
+
+      <h3 class="section-title">USO DE CPU</h3>
+      <div id="cpu-bars">
+        <!-- Se insertan dinámicamente -->
+      </div>
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal">
+      <div class="terminal-frame">
+        <div id="noVNC_container">
+          <textarea id="noVNC_keyboardinput" style="display: none;"></textarea>
+        </div>
+      </div>
+
+      <div class="bottom-controls">
+        <button class="noVNC_button" id="noVNC_keyboard_button">TECLADO</button>
+        <button class="noVNC_button" id="noVNC_toggle_ctrl_button">CTRL</button>
+        <button class="noVNC_button" id="noVNC_toggle_alt_button">ALT</button>
+        <button class="noVNC_button" id="noVNC_send_tab_button">TAB</button>
+        <button class="noVNC_button" id="noVNC_send_esc_button">ESC</button>
+        <button class="noVNC_button" id="noVNC_power_button">PWR</button>
+        <button class="noVNC_button" id="noVNC_fullscreen_button">FULLSCREEN</button>
+        <button class="noVNC_button" id="noVNC_settings_button">CONFIG</button>
+        <button class="noVNC_button" id="noVNC_disconnect_button">DESCONECTAR</button>
+      </div>
+    </div>
+  </div>
+
+  <audio id="noVNC_bell">
+    <source src="app/sounds/bell.oga" type="audio/ogg">
+    <source src="app/sounds/bell.mp3" type="audio/mpeg">
+  </audio>
+
+  <script>
+    const ctx = document.getElementById('netChart').getContext('2d');
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    const points = [];
+
+    const cpuBarsContainer = document.getElementById("cpu-bars");
+    const NUM_CPUS = 4; // Ajusta según el número de CPUs
+
+    for (let i = 1; i <= NUM_CPUS; i++) {
+      const label = document.createElement('div');
+      label.className = 'bar-label';
+      label.innerText = `C${i}`;
+
+      const container = document.createElement('div');
+      container.className = 'bar-container';
+
+      const fill = document.createElement('div');
+      fill.className = 'bar-fill';
+      fill.id = `cpu${i}`;
+
+      const percent = document.createElement('span');
+      percent.className = 'bar-percent';
+      percent.id = `cpu${i}-text`;
+
+      container.appendChild(fill);
+      container.appendChild(percent);
+
+      cpuBarsContainer.appendChild(label);
+      cpuBarsContainer.appendChild(container);
+    }
+
+    function updateStats(memUsage, cpuUsages = [], netPoint) {
+      document.getElementById("mem-bar").style.width = memUsage + "%";
+      document.getElementById("mem-percent").innerText = memUsage + "%";
+
+      cpuUsages.forEach((val, i) => {
+        const bar = document.getElementById(`cpu${i + 1}`);
+        const txt = document.getElementById(`cpu${i + 1}-text`);
+        if (bar && txt) {
+          bar.style.width = val + "%";
+          txt.innerText = val + "%";
+        }
+      });
+
+      if (typeof netPoint === 'number') {
+        if (points.length >= 50) points.shift();
+        points.push(netPoint);
+        drawChart();
+      }
+    }
+
+    function drawChart() {
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = "#00fff7";
+      ctx.beginPath();
+      points.forEach((pt, i) => {
+        const x = (i / (50 - 1)) * width;
+        const y = height - pt * height;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    // Reemplaza con tu WebSocket/API aquí para uso real:
+    /*
+    setInterval(() => {
+      fetch('/api/stats').then(r => r.json()).then(data => {
+        updateStats(data.memory, data.cpu, data.traffic);
+      });
+    }, 1000);
+    */
+  </script>
+</body>
+</html>
